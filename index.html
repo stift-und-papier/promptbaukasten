@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'">
+  <title>Prompt-Baukasten für Lehrkräfte</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Theme vor dem ersten Zeichnen setzen (kein Aufblitzen): gespeicherte Wahl, sonst Systemeinstellung
+    (function () {
+      var t; try { t = localStorage.getItem('pb.theme'); } catch (e) {}
+      if (t !== 'dark' && t !== 'light') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip" href="#form">Zum Formular springen</a>
+
+  <header class="topbar">
+    <div class="topbar-row">
+      <h1 class="title">Prompt-Baukasten <span>für Lehrkräfte</span></h1>
+      <div class="top-actions">
+        <label class="switch theme-switch" for="themeSwitch">
+          <input type="checkbox" role="switch" id="themeSwitch" class="switch-input">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="label">Dunkelmodus</span>
+        </label>
+        <button type="button" class="btn ghost" id="btnExample" data-icon="sparkle">Beispiel laden</button>
+        <button type="button" class="btn ghost" id="btnProfiles" data-icon="save">Profile</button>
+        <button type="button" class="btn ghost" id="btnHistory" data-icon="history">Verlauf</button>
+        <button type="button" class="btn ghost" id="btnReset" data-icon="reset">Zurücksetzen</button>
+      </div>
+    </div>
+    <nav class="modebar" id="modebar" aria-label="Modus wählen"></nav>
+  </header>
+
+  <main class="layout">
+    <div class="form-col">
+      <details class="notice" open>
+        <summary><span class="tile" data-icon="info" aria-hidden="true"></span> Hinweise</summary>
+        <ul id="hinweise"></ul>
+      </details>
+
+      <form id="form" novalidate></form>
+
+      <details class="card uploads" id="uploads">
+        <summary><h2><span class="tile" data-icon="upload" aria-hidden="true"></span>Das hilft der KI zusätzlich</h2><span class="chev" data-icon="chevron"></span></summary>
+        <p class="muted">Hake ab, was du zusammen mit dem Prompt hochlädst oder einfügst. Die KI fragt diese Unterlagen dann nicht erneut ab.</p>
+        <p class="callout" id="uploadPrivacy"></p>
+        <div class="chips" id="uploadChips" role="group" aria-label="Unterlagen, die ich hochlade"></div>
+      </details>
+    </div>
+
+    <aside class="preview" id="preview" aria-label="Prompt-Vorschau">
+      <div class="sheet-bar">
+        <button type="button" class="sheet-toggle" id="sheetToggle" aria-expanded="false" aria-controls="sheetBody">
+          <span data-icon="chevron" class="chev"></span><span>Prompt anzeigen</span>
+        </button>
+        <button type="button" class="btn primary sheet-copy" data-copy data-icon="copy">Kopieren</button>
+      </div>
+      <div class="sheet-body" id="sheetBody">
+        <div class="preview-head">
+          <h2>Dein Prompt</h2>
+          <div class="quality" id="quality">
+            <div class="meter" aria-hidden="true"><span id="qualityBar"></span></div>
+            <p id="qualityText" class="small"></p>
+          </div>
+        </div>
+        <pre class="prompt" id="promptOut" tabindex="0" aria-label="Erzeugter Prompt"></pre>
+        <div class="preview-actions">
+          <button type="button" class="btn primary" data-copy data-icon="copy">Kopieren</button>
+          <button type="button" class="btn" id="btnTxt" data-icon="download">.txt</button>
+          <button type="button" class="btn" id="btnMd" data-icon="download">.md</button>
+        </div>
+        <p class="small muted kbd-hint"><kbd>⌘</kbd>/<kbd>Strg</kbd> + <kbd>Enter</kbd> kopiert · <kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>7</kbd> wechselt den Modus</p>
+        <details class="followups">
+          <summary><h3>Nachschärfen</h3><span class="chev" data-icon="chevron"></span></summary>
+          <p class="small muted">Folgeprompts für denselben Chat, nachdem die KI geantwortet hat.</p>
+          <ul id="followups"></ul>
+        </details>
+      </div>
+    </aside>
+  </main>
+
+  <dialog id="dlgProfiles" aria-labelledby="dlgProfilesTitle">
+    <form method="dialog" class="dlg-head">
+      <h2 id="dlgProfilesTitle">Profile</h2>
+      <button class="icon-btn" aria-label="Schließen" data-icon="close"></button>
+    </form>
+    <p class="small muted">Speichert alle aktuellen Einstellungen in diesem Browser. Bitte keine Namen von Personen verwenden.</p>
+    <div class="row">
+      <label class="sr-only" for="profileName">Name des Profils</label>
+      <input id="profileName" type="text" maxlength="60" placeholder="z. B. Meine 8c Deutsch">
+      <button type="button" class="btn primary" id="btnSaveProfile">Speichern</button>
+    </div>
+    <ul class="list" id="profileList"></ul>
+    <div class="row">
+      <button type="button" class="btn" id="btnExport" data-icon="download">Exportieren (JSON)</button>
+      <button type="button" class="btn" id="btnImport" data-icon="upload">Importieren</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </dialog>
+
+  <dialog id="dlgHistory" aria-labelledby="dlgHistoryTitle">
+    <form method="dialog" class="dlg-head">
+      <h2 id="dlgHistoryTitle">Verlauf</h2>
+      <button class="icon-btn" aria-label="Schließen" data-icon="close"></button>
+    </form>
+    <p class="small muted">Die letzten 10 kopierten oder heruntergeladenen Prompts.</p>
+    <ul class="list" id="historyList"></ul>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <span id="toastText"></span>
+    <button type="button" class="btn ghost" id="toastAction" hidden></button>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/prompt-builder.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
