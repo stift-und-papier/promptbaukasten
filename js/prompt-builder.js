@@ -102,12 +102,12 @@ var PB = (function () {
     sec('Ausgabeformat', b.format.concat(mode.ausgabe || []), true);
 
     var ab = data.arbeitsblatt;
-    if (ab && ab.aktiv(s)) out.push('## ' + ab.titel + '\n' + ab.text(s, h).join('\n\n'));
+    if (ab && ab.aktiv(s)) out.push('## ' + ab.titel + '\n' + ab.text(s, h).filter(function (x) { return !isEmpty(x); }).join('\n\n'));
 
-    var q = T.qualitaet.slice();
+    // Rückfragen stehen immer zuerst: Die KI klärt Unklarheiten, bevor sie etwas erstellt.
+    var q = [T.rueckfragen].concat(T.qualitaet);
     if (mode.pruefen) q.push(T.pruefenRegel);
     if (detail) q = q.concat(T.qualitaetDetail);
-    if (s.rueckfragen) q.push(T.rueckfragen);
     sec('Qualitätsregeln', q, true);
 
     var beispiele = upIds.filter(function (id) { return checked.indexOf(id) === -1; })

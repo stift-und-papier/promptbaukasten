@@ -22,7 +22,7 @@ D.modes.forEach(function (m) {
     assert.ok(p.indexOf('Erfinde keine Quellen oder Fakten.') !== -1);
     assert.ok(p.indexOf('[unsicher]') !== -1 && p.indexOf('Das solltest du prüfen') !== -1);
     assert.ok(p.indexOf('[Thema ergänzen]') === -1);
-    assert.ok(p.indexOf('undefined') === -1 && p.indexOf('NaN') === -1 && p.indexOf('{') === -1, 'Platzhalter-Reste');
+    assert.ok(p.indexOf('undefined') === -1 && p.indexOf('NaN') === -1 && !/\{[a-zA-Z]+\}/.test(p), 'Platzhalter-Reste');
     // Sections appear in order
     var pos = SECTIONS.map(function (h) { return p.indexOf(h); });
     assert.deepStrictEqual(pos.slice().sort(function (a, b) { return a - b; }), pos);
@@ -65,9 +65,9 @@ test('Zweig und Differenzierung', function () {
 });
 
 test('Ausgabeformat, Länge, Sprache', function () {
-  var s = example('stunde'); s.format = 'Checkliste'; s.laenge = 'kurz'; s.sprache = 'Englisch';
+  var s = example('stunde'); s.stundenMaterial = []; s.format = 'Checkliste'; s.laenge = 'kurz'; s.sprache = 'Englisch';
   var p = PB.buildPrompt(s, D);
-  assert.ok(p.indexOf('- Format: Checkliste') !== -1 && p.indexOf('Länge: kurz') !== -1 && p.indexOf('Sprache des Ergebnisses: Englisch') !== -1);
+  assert.ok(p.indexOf('- Format: Checkliste') !== -1 && p.indexOf('Länge: kurz – höchstens etwa 1 DIN-A4-Seite') !== -1 && p.indexOf('Sprache des Ergebnisses: Englisch') !== -1);
 });
 
 test('Klassenarbeit: je Zweig eine Fassung', function () {
@@ -99,10 +99,13 @@ test('Abgehakte Upload-Punkte erscheinen im Prompt und nicht mehr als Beispiel',
   assert.ok(p.indexOf('Bewertungsraster') === -1);
 });
 
-test('Rückfragen-Toggle und kompakt/ausführlich', function () {
+test('Rückfragen immer zuerst, kompakt/ausführlich', function () {
   var s = example('reihe');
-  assert.ok(PB.buildPrompt(s, D).indexOf('höchstens 3 Rückfragen') === -1);
-  s.rueckfragen = true; assert.ok(PB.buildPrompt(s, D).indexOf('höchstens 3 Rückfragen') !== -1);
+  D.modes.forEach(function (m) {
+    var q = PB.buildPrompt(example(m.id), D).split('## Qualitätsregeln')[1];
+    assert.ok(q.indexOf('- Kläre Unklarheiten immer zuerst') === 1, m.id + ': Rückfragen als erste Regel');
+  });
+  assert.ok(!('rueckfragen' in PB.defaultState(D)), 'kein Schalter mehr');
   var lang = PB.buildPrompt(s, D); s.promptStil = 'kompakt'; var kurz = PB.buildPrompt(s, D);
   assert.ok(kurz.length < lang.length && kurz.indexOf('Für ein noch besseres Ergebnis') !== -1);
 });
@@ -144,14 +147,27 @@ test('Arbeitsblatt-Vorlage: automatisch, Lücken gefüllt', function () {
   var p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('## Gestaltung des Arbeitsblatts') > p.indexOf('## Ausgabeformat'));
   assert.ok(p.indexOf('Aufgabenblatt für Mathematik, Klasse 7 der Sekundarstufe I (Klassen 5–10), zum Thema „Prozentrechnung am Marktstand des Zauberdorfs Kerbelstein“, mit dem Lernziel einem klar formulierten') !== -1);
-  assert.ok(p.indexOf('und 5 Aufgaben.') !== -1 && p.indexOf('darf mehrere Seiten umfassen') !== -1);
-  assert.ok(p.indexOf('Mappenfarbe für Mathematik, Blau #466BB0') !== -1 && p.indexOf('Deutsch Rot #BD3D42') === -1, 'nur die passende Farbe');
+  assert.ok(p.indexOf('und 5 Aufgaben.') !== -1 && p.indexOf('darf mehrere Blätter umfassen') !== -1);
+  assert.ok(p.indexOf('Mappenfarbe') === -1 && p.indexOf('#466BB0') === -1 && p.indexOf('Keine Fach- oder Jahrgangsfarben') !== -1, 'keine Fachfarbe');
+  assert.ok(p.indexOf('Zahlen nie in Handschrift: Aufgabenziffern in Verdana Bold') !== -1 && p.indexOf('Aufgabenziffern 32 pt') === -1, 'sachliche Ziffern');
+  // Designsheet der Schule
+  assert.ok(p.indexOf('Petrol #06344A') !== -1 && p.indexOf('Patrick Hand') !== -1 && p.indexOf('Verdana für Fließtext') !== -1 && p.indexOf('Atkinson') === -1);
+  assert.ok(p.indexOf('die Null wird als normale 0 geschrieben') !== -1);
+  var fmt = p.split('## Ausgabeformat')[1].split('## Gestaltung des Arbeitsblatts')[0];
+  assert.ok(fmt.indexOf('Format:') === -1 && fmt.indexOf('Länge:') === -1, 'kein zweites Ausgabeformat beim Arbeitsblatt');
+  assert.ok(p.indexOf('Vorrang:') === -1, 'ohne Visualisierungswünsche kein Vorrang-Satz');
+  var v = example('material'); v.visualWunsch = 'Bunte Hintergrundflächen je Aufgabe';
+  var pv = PB.buildPrompt(v, D);
+  assert.ok(pv.indexOf('Wünsche zur Visualisierung: Bunte Hintergrundflächen je Aufgabe') !== -1 && pv.indexOf('Vorrang: Meine Wünsche zur Visualisierung') > pv.indexOf('## Gestaltung des Arbeitsblatts'));
+  assert.ok(p.indexOf('Seitenränder 12 mm') !== -1 && p.indexOf('höchstens vier Aufgaben') !== -1);
+  assert.ok(p.indexOf('niemals mit einer Wellenlinie unterstreichen') !== -1, 'keine gekringelte Unterstreichung');
+  assert.ok(p.indexOf('Source Serif') === -1 && p.indexOf('DM Sans') === -1 && p.indexOf('16–20 mm') === -1, 'alte Vorgaben entfernt');
+  assert.ok(p.indexOf('class="ab-blatt"') !== -1, 'HTML nutzt Klassen des Designsheets');
   assert.ok(!/\[(Fach|Stufe|Thema|Lernziel|Anzahl)\]/.test(p));
   s.lernziel = 'Die Lernenden berechnen Rabatte.'; s.aufgabenAnzahl = 8; s.jahrgang = '11'; s.fach = 'Politik-Wirtschaft';
   p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('Klasse 11 der Sekundarstufe II') !== -1 && p.indexOf('mit dem Lernziel „Die Lernenden berechnen Rabatte.“ und 8 Aufgaben') !== -1);
-  assert.ok(p.indexOf('Wähle genau die passende Mappenfarbe') !== -1, 'Fach ohne Mappenfarbe: Liste');
-  assert.ok(p.indexOf('Lass keinen Aufgabenblock über einen Seitenumbruch laufen') !== -1);
+  assert.ok(p.indexOf('Lass keinen Baustein über einen Seitenumbruch laufen') !== -1);
   assert.ok(p.indexOf('Ausgabe: Gib das Arbeitsblatt als eine vollständige, druckfertige HTML-Datei aus') !== -1, 'Standard: HTML');
   s.abFormat = 'Word-Datei (DOCX)'; p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('als Word-Datei (DOCX)') !== -1 && p.indexOf('druckfertige HTML-Datei aus:') === -1);
@@ -159,7 +175,7 @@ test('Arbeitsblatt-Vorlage: automatisch, Lücken gefüllt', function () {
   assert.ok(PB.buildPrompt(s, D).trim().split('## Gestaltung des Arbeitsblatts')[1].indexOf('## Qualitätsregeln') !== -1, 'Abschnitt vor den Qualitätsregeln');
   s.materialTyp = 'Quiz'; assert.ok(PB.buildPrompt(s, D).indexOf('Gestaltung des Arbeitsblatts') === -1);
   var st = example('stunde'); // Deutsch, mit Arbeitsblatt
-  assert.ok(PB.buildPrompt(st, D).indexOf('Mappenfarbe für Deutsch, Rot #BD3D42') !== -1);
+  assert.ok(PB.buildPrompt(st, D).indexOf('## Gestaltung des Arbeitsblatts') !== -1 && PB.buildPrompt(st, D).indexOf('#BD3D42') === -1);
   st.stundenMaterial = ['Tafelbild']; assert.ok(PB.buildPrompt(st, D).indexOf('Gestaltung des Arbeitsblatts') === -1);
   assert.ok(PB.buildPrompt(example('klassenarbeit'), D).indexOf('Gestaltung des Arbeitsblatts') === -1);
 });

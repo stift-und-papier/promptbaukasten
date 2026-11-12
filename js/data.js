@@ -154,17 +154,25 @@ var PB_DATA = (function () {
     format: {
       type: 'seg', label: 'Ausgabeformat', def: 'Stichpunkte', section: 'format', hideIn: ['ewh'],
       options: ['Tabelle', 'Stichpunkte', 'Fließtext', 'Arbeitsblatt-Layout', 'Folienliste', 'Checkliste'],
+      // Beim Arbeitsblatt legen Dateiformat und Designsheet die Form fest – ein zweites „Ausgabeformat“ würde verwirren.
+      showIf: function (s) { return !arbeitsblatt.aktiv(s); },
       tpl: 'Format: {v}'
     },
     laenge: {
-      type: 'seg', label: 'Länge', def: 'mittel', options: ['kurz', 'mittel', 'ausführlich'], section: 'format',
+      type: 'seg', label: 'Länge des Ergebnisses', def: 'mittel', options: ['kurz', 'mittel', 'ausführlich'], section: 'format',
+      hint: 'kurz ≈ 1 Seite · mittel ≈ 1–2 Seiten · ausführlich ≈ 2–4 Seiten (DIN A4, ohne Lösungen)',
+      // Beim Arbeitsblatt bestimmt die Anzahl der Aufgaben den Umfang.
+      showIf: function (s) { return !arbeitsblatt.aktiv(s); },
       tpl: function (v) {
-        return 'Länge: ' + ({ kurz: 'kurz – auf das Wesentliche beschränkt', mittel: 'mittel', 'ausführlich': 'ausführlich – mit Erläuterungen und Beispielen' })[v];
+        return 'Länge: ' + ({
+          kurz: 'kurz – höchstens etwa 1 DIN-A4-Seite (rund 300 Wörter), nur das Wesentliche',
+          mittel: 'mittel – etwa 1–2 DIN-A4-Seiten (rund 300–700 Wörter)',
+          'ausführlich': 'ausführlich – etwa 2–4 DIN-A4-Seiten (rund 700–1500 Wörter), mit Erläuterungen und Beispielen'
+        })[v] + '; Lösungen und Hinweise für die Lehrkraft zählen nicht mit.';
       }
     },
     sprache: { type: 'seg', label: 'Sprache des Ergebnisses', def: 'Deutsch', options: ['Deutsch', 'Englisch'], section: 'format', tpl: 'Sprache des Ergebnisses: {v}' },
     promptStil: { type: 'seg', label: 'Prompt-Umfang', def: 'ausführlich', options: ['kompakt', 'ausführlich'], hint: 'Kompakt lässt erläuternde Zusätze weg.' },
-    rueckfragen: { type: 'toggle', label: 'Rückfragen zuerst', def: false, hint: 'Die KI stellt erst höchstens 3 Rückfragen, falls Angaben fehlen.' },
 
     // ---------- Modus: Stundeneinstieg ----------
     einstiegTyp: {
@@ -507,7 +515,7 @@ var PB_DATA = (function () {
     { id: 'gruppe', title: 'Lerngruppe und Ziele', icon: 'people', fields: ['dauer', 'lerngruppe', 'lernziel', 'vorwissen'] },
     { id: 'diff', title: 'Differenzierung', icon: 'layers', fields: ['diff', 'diffArt', 'diffZweige'] },
     { id: 'methodik', title: 'Methodik und Einsatz', icon: 'wand', fields: ['einsatz', 'geraet', 'tool', 'ipadDigitalSchreiben', 'interaktiv', 'kritisch', 'afb'] },
-    { id: 'ausgabe', title: 'Ausgabe', icon: 'sliders', fields: ['format', 'laenge', 'sprache', 'promptStil', 'rueckfragen'] }
+    { id: 'ausgabe', title: 'Ausgabe', icon: 'sliders', fields: ['format', 'laenge', 'sprache', 'promptStil'] }
   ];
 
   var texte = {
@@ -520,7 +528,7 @@ var PB_DATA = (function () {
       'Ergänze am Ende eine kurze Liste „Das solltest du prüfen“.'
     ],
     qualitaetDetail: ['Verwende fachlich korrekte Begriffe und eine dem Jahrgang angemessene Sprache.'],
-    rueckfragen: 'Stelle zuerst höchstens 3 Rückfragen, falls wichtige Angaben fehlen, und warte auf meine Antworten, bevor du das Ergebnis erstellst.',
+    rueckfragen: 'Kläre Unklarheiten immer zuerst: Prüfe vor dem Erstellen, ob Angaben fehlen, widersprüchlich oder mehrdeutig sind. Wenn ja, stelle gebündelt höchstens drei Rückfragen und warte auf meine Antworten, bevor du das Ergebnis erstellst.',
     pruefenRegel: 'Prüfe Aufgaben, Punktsummen und Zuordnung der Anforderungsbereiche selbst auf Stimmigkeit, bevor du antwortest.',
     optimierung: [
       'Gib ganz am Ende einen eigenen Abschnitt mit der Überschrift „Für ein noch besseres Ergebnis“ aus. Darin:',
@@ -552,12 +560,7 @@ var PB_DATA = (function () {
   ];
 
   // Gestaltungsvorlage für Arbeitsblätter. Wird automatisch angehängt, sobald ein Arbeitsblatt angefordert ist.
-  // Lücken ([Fach], [Stufe], [Thema], [Lernziel], [Anzahl], Mappenfarbe) werden aus den Formularangaben gefüllt.
-  var mappenfarben = {
-    'Mathematik': 'Blau #466BB0', 'Deutsch': 'Rot #BD3D42', 'Englisch': 'Gelb #E5B928', 'Biologie': 'Grün #438153',
-    'Chemie': 'Hellblau #77BBD4', 'Physik': 'Hellblau #77BBD4', 'Geschichte': 'Orange #DD8738',
-    'Erdkunde': 'Braun #96694B', 'Religion': 'Violett #8A65A8', 'Werte und Normen': 'Violett #8A65A8'
-  };
+  // Lücken ([Fach], [Stufe], [Thema], [Lernziel], [Anzahl]) werden aus den Formularangaben gefüllt.
   var arbeitsblatt = {
     titel: 'Gestaltung des Arbeitsblatts',
     aktiv: function (s) {
@@ -571,25 +574,30 @@ var PB_DATA = (function () {
       var lernziel = (s.lernziel || '').trim()
         ? '„' + s.lernziel.trim() + '“'
         : 'einem klar formulierten, überprüfbaren Lernziel, das du passend zum Thema festlegst';
-      var farbe = mappenfarben[h.fach]
-        ? 'Farbe: Verwende genau die Mappenfarbe für ' + h.fach + ', ' + mappenfarben[h.fach] + ', als sparsame Fachfarbe für Fachlabel, feine Linien und Aufgabennummern.'
-        : 'Farbe: Wähle genau die passende Mappenfarbe als sparsame Fachfarbe für Fachlabel, feine Linien und Aufgabennummern: Mathematik Blau #466BB0; Deutsch Rot #BD3D42; Englisch Gelb #E5B928; Biologie Grün #438153; Chemie und Physik Hellblau #77BBD4; Geschichte häufig Orange #DD8738; Erdkunde / Geografie Braun #96694B; Religion / Werte & Normen Violett #8A65A8.';
+      // Kombination: Aussehen nach dem Designsheet der Schule (arbeitsblatt.css), Didaktik aus der Aufgabenblatt-Vorlage.
       return [
-        'Erstelle ein vollständiges, druckfähiges Aufgabenblatt für ' + (h.fach || 'das Fach') + ', ' + stufe + ', zum Thema „' + h.thema + '“, mit dem Lernziel ' + lernziel + ' und ' + s.aufgabenAnzahl + ' Aufgaben. Das Aufgabenblatt darf mehrere Seiten umfassen, wenn Aufgaben, Material und Antwortflächen das erfordern; wiederhole dann auf jeder Seite Fach und Thema in der Kopfzeile sowie die Seitenzahl. Lass keinen Aufgabenblock über einen Seitenumbruch laufen und plane lieber eine Seite mehr, als Antwortflächen zu verkleinern oder Inhalte abzuschneiden. Gestalte es klar, ruhig, strukturiert und altersgerecht: Jeder Arbeitsschritt soll sofort verständlich sein; Material, Auftrag und Antwortbereich sind sichtbar getrennt. Erstelle außerdem eine separate Lösungsübersicht, nicht auf dem Schülerblatt.',
-        farbe + ' Verwende Petrol #176E70 nur als zurückhaltende Strukturfarbe und Terrakotta #D77742 für fächerübergreifende Tipps oder wichtige Hinweise; mische nicht mehrere Fachfarben auf einem Blatt. Nutze überwiegend Weiß #FFFFFF als Hintergrund, Tinte #183132 für Haupttext und gedecktes Grau für Nebeninformationen und Trennlinien. Setze Text auf hellen Farbflächen stets dunkel; bei Gelb und Hellblau niemals weißen Text verwenden. Textkontrast mindestens 4,5:1; längere Texte nie in Akzentfarben. Farbe darf Bedeutung niemals allein vermitteln: ergänze Beschriftungen, Formen oder Linienmuster.',
-        'Typografie: Titel in Source Serif 4, 22–26 pt, Gewicht 600; Zwischenüberschriften 15–17 pt. Arbeitsaufträge in DM Sans 11–12 pt, Fließ- und Zusatztext in DM Sans 10–11 pt, Zeilenabstand mindestens 1,4. Beginne jeden Auftrag mit einem eindeutigen, fett gesetzten Operator (z. B. Vergleiche, Berechne, Begründe); verwende altersgerechte, kurze Sätze. Merksätze in einem dezent umrandeten, eindeutig mit „Merke“ beschrifteten Kasten, nicht nur farbig hervorgehoben. Lösungen separat mit derselben Aufgabennummerierung, gut lesbarer DM Sans und klar erkennbaren Ergebnissen sowie bei Bedarf kurzen Rechenwegen oder Begründungen. Maximal drei sichtbare Schriftebenen pro Blatt; linksbündig setzen, sparsame Silbentrennung, kein durchgängiger Versalsatz.',
-        'Seitenaufbau: DIN A4 hoch, Seitenränder 16–20 mm; Querformat nur bei umfangreichen Bildern oder Tabellen. Standardmäßig eine Lesespalte; zwei Spalten nur für kurze unabhängige Aufgaben oder direkt vergleichbare Materialien. Arbeite mit einem konsistenten 8-pt-Abstandssystem: etwa 8 mm zwischen Unterelementen und 12–16 mm zwischen Aufgabenblöcken. Oben Fach, Thema, Titel und optional Name/Datum; danach kurzer Kontext, nummerierte Aufgaben, zugehöriges Material oder Hilfe und ausreichend Antwortfläche. Unten Seitenzahl und kurze Quellenangaben. Nutze Weißraum als Arbeitsraum und eine eindeutige visuelle Hierarchie ohne unnötige Rahmen oder Dekoration.',
-        'Aufgaben: Jeder Block folgt der Reihenfolge Nummer + fett gesetzter Operator + konkreter Materialbezug + erwartetes Ergebnis + passende Antwortfläche. Nummeriere durchgehend und einheitlich; Sozialform und Zeit stehen, falls nötig, stets an derselben Stelle. Halte Aufgabenblöcke optisch getrennt, aber ruhig. Plane Antwortfelder nach Aufwand: eine Zeile für einen Begriff, drei bis fünf Zeilen für eine Begründung, freie oder karierte Fläche für Skizzen und Rechenwege; Ergebnisfelder bei Rechnungen separat. Tabellen erhalten klare Spaltenüberschriften, ausreichend Zellraum, dezente Linien und Einheiten; Diagramme gut lesbare Achsen, Skalen, Legenden und Einheiten sowie Beschriftungen, die auch in Graustufen funktionieren. Platziere „Hilfe“ als kleine markierte Box nach dem Auftrag und „Weiterdenken“ als optionale Vertiefung am Ende, ohne die Kernaufgabe zu unterbrechen.',
-        'Bildsprache: Verwende Icons nur zur Kennzeichnung einer Arbeitsweise und immer mit danebenstehendem Textlabel; ein einheitliches lineares Set mit abgerundeten Enden, 1,8–2 pt Strichstärke und 18–24 pt Größe. Illustrationen und fachliche Diagramme sind reduziert, mit klaren Konturen und maximal drei Akzentfarben; erkläre Prozesse durch Pfeile und Beschriftungen. Fotos nur bei didaktischem Nutzen für Beobachtung oder Analyse: ein klarer Bildgegenstand, ruhiger Hintergrund, natürliche Perspektive, altersgerechte vielfältige Darstellung; ergänze Bildunterschrift, Quelle und gegebenenfalls Maßstab. Vermeide Klischees und KI-typische Fantasiedetails in fachlichen Abbildungen.',
-        'Abschlussprüfung: Prüfe fachliche Korrektheit, Zahlen, Einheiten, Quellen, eindeutige Operatoren, angemessene Antwortflächen, konsistente Fach- und Akzentfarben, Nummerierung und Textlabels. Das Blatt muss barrierearm und drucktauglich sein: gut lesbare Schrift und Linien, ausreichend Kontrast, kein Beschnitt wichtiger Inhalte, keine großflächigen Farbfüllungen und auch als Schwarzweißdruck verständlich. Vermeide überladene Seiten, dekorative Elemente ohne Lernfunktion, winzige Schrift, Text auf unruhigen Bildern, reine Farbcodierung, uneinheitliche Icons und zu wenig Platz für Antworten.',
+        'Erstelle ein vollständiges, druckfähiges Aufgabenblatt für ' + (h.fach || 'das Fach') + ', ' + stufe + ', zum Thema „' + h.thema + '“, mit dem Lernziel ' + lernziel + ' und ' + s.aufgabenAnzahl + ' Aufgaben. Gestalte es nach dem Designsheet der Schule (Regeln unten): klar, ruhig, strukturiert und altersgerecht; jeder Arbeitsschritt ist sofort verständlich; Material, Auftrag und Antwortbereich sind sichtbar getrennt. Jedes Blatt füllt genau eine A4-Seite und enthält höchstens vier Aufgaben, einen Merkkasten, ein bis zwei Tippkästen und zwei Illustrationen. Das Arbeitsblatt darf mehrere Blätter umfassen; jedes weitere Blatt bekommt einen eigenen Kopf. Lass keinen Baustein über einen Seitenumbruch laufen und lege lieber ein Blatt mehr an, als Antwortflächen zu verkleinern oder Inhalte abzuschneiden. Erstelle außerdem eine separate Lösungsübersicht, nicht auf dem Schülerblatt.',
+        'Farben: Petrol #06344A für Text, Überschriften und Rahmen der Aufgabenbox; Petrol ruhig #3D5F70 für Beschriftungen und Trennlinien; #9DB0B8 nur für Schreiblinien. Akzentfarben nur für Formen, Rahmen, Ziffern und Icons, nie für Fließtext: Gelb #F5A742 (Rahmen des Merkkastens, Unterstreichung der Blattüberschrift, Icons), Orange #FF7F0A sehr sparsam, Salbei #719C7B, Salbei dunkel #4E7A5A (Rahmen und Titel des Tippkastens), Rost #B8512A (Aufgabenziffern). Hintergrund immer Weiß; Flächen nur in den hellen Tönungen Gelb hell #FDF0DA (Merkkasten), Salbei hell #E3EEE5 (Tippkasten) und Pfirsich hell #FDEEE2 (z. B. Tabellenkopf), keine Vollflächen. Keine Fach- oder Jahrgangsfarben. Textkontrast mindestens 4,5:1. Farbe darf Bedeutung niemals allein vermitteln: ergänze Beschriftungen, Rahmenarten, Formen oder Icons.',
+        'Typografie: Patrick Hand (nur eine Stärke, keine Fettung) für Blattüberschrift 30 pt, Zwischenüberschriften 18 pt und Kastentitel 16 pt. Zahlen nie in Handschrift: Aufgabenziffern in Verdana Bold, etwa 17 pt, in Rost #B8512A, zentriert in einem Kreis von etwa 9 mm mit Gelb hell und dünnem gelbem Rand. Verdana für Fließtext, Arbeitsaufträge, Tabellen und alle Zahlen, 11 pt (nie kleiner), Zeilenabstand 1,4; die Null wird als normale 0 geschrieben, ohne Schrägstrich oder Punkt, verwende also keine Schrift mit durchgestrichener oder gepunkteter Null; zwischen Zahl und Einheit oder Prozentzeichen steht ein geschütztes Leerzeichen, damit „10 %“ nicht getrennt wird; Bold nur für Operatoren, Italic für Zitate; Feldnamen im Kopf (Jahrgang, Fach, Datum) 9 pt in Versalien. Überschriften niemals mit einer Wellenlinie unterstreichen: Die Blattüberschrift bekommt höchstens eine gerade gelbe Linie, Zwischen- und Kastenüberschriften gar keine Unterstreichung. Die Blattüberschrift hat höchstens eine Zeile (etwa 35 Zeichen). Beginne jeden Auftrag mit einem eindeutigen, fett gesetzten Operator (z. B. Vergleiche, Berechne, Begründe); verwende altersgerechte, kurze Sätze. Maximal drei sichtbare Schriftebenen pro Blatt; linksbündig setzen, sparsame Silbentrennung, kein durchgängiger Versalsatz außer bei den Feldnamen.',
+        'Seitenaufbau: DIN A4 hoch, Seitenränder 12 mm (Nutzfläche 186 × 273 mm); nichts ragt in den Rand. Oben auf jedem Blatt der Kopf: Jahrgang, Fach, Datum als leere Linie zum Ausfüllen und die Blattüberschrift, darunter eine gepunktete Linie in Petrol ruhig. Danach kurzer Kontext, Merkkasten, nummerierte Aufgabenboxen mit zugehöriger Hilfe und ausreichend Antwortfläche. Standardmäßig eine Lesespalte; zwei Spalten nur für kurze unabhängige Aufgaben oder direkt vergleichbare Materialien. Abstände im Raster 1,5 mm (Titel zu Text), 3 mm (Auftrag zu Linien), 4,5 mm (zwischen Bausteinen), 6 mm (Innenabstand seitlich), 9 mm (großer Abstand, gleich der Zeilenhöhe). Eine gepunktete Trennlinie nur zwischen Themenblöcken, nicht zwischen jeder Aufgabe. Fließtext pro Blatt: Jahrgang 5–6 höchstens etwa 150 Wörter, Jahrgang 7–10 etwa 250, Oberstufe etwa 350. Mindestens ein Drittel des Blatts bleibt Schreibfläche oder Weißraum. Bei mehreren Blättern steht unten die Seitenzahl, bei Material aus fremden Quellen eine kurze Quellenangabe.',
+        'Bausteine: Merkkasten („Merke“, „Info“, „Regel“ oder „Definition“): Gelb hell mit durchgezogenem gelbem Rahmen, abgerundeten Ecken und i-Icon, 2–4 Sätze, höchstens einer pro Blatt. Aufgabenbox: weiße Box mit durchgezogenem Petrol-Rahmen und abgerundeten Ecken, Ziffer wie unter Typografie beschrieben; ein Arbeitsauftrag pro Box, höchstens zwei Sätze, durchgehend nummeriert, nicht verschachtelt. Jede Box folgt der Reihenfolge Ziffer + fett gesetzter Operator + konkreter Materialbezug + erwartetes Ergebnis + passende Antwortfläche; Sozialform und Zeit stehen, falls nötig, stets an derselben Stelle. Tipp- oder Hilfekasten: Salbei hell mit gestricheltem Rahmen in Salbei dunkel und Glühbirnen-Icon, 1–3 Sätze, direkt unter der Aufgabe, zu der er gehört. „Weiterdenken“ als Variante „Zusatzaufgabe“ mit Stern-Icon am Ende des Blatts, ohne die Kernaufgaben zu unterbrechen.',
+        'Antwortflächen: Plane sie nach Aufwand. Schreiblinien im Abstand von 9 mm: eine Linie für einen Begriff, drei bis fünf für eine Begründung; freie oder karierte Fläche für Skizzen und Rechenwege, Ergebnisfelder bei Rechnungen separat; Lücken als Linie von etwa 30 mm (länger für längere Antworten). Die letzte Aufgabe eines Blatts darf den restlichen Platz mit Schreiblinien füllen. Tabellen erhalten klare Spaltenüberschriften (Kopfzeile ggf. Pfirsich hell), ausreichend Zellraum, dezente Linien und Einheiten; Diagramme gut lesbare Achsen, Skalen, Legenden und Einheiten sowie Beschriftungen, die auch in Graustufen funktionieren.',
+        'Bildsprache: Höchstens zwei Illustrationen pro Blatt, nur im Flat-Stil in Gelb und Schwarz, rein dekorativ (alt="") und etwa 30 mm breit neben einem Kasten oder der Überschrift; keine Fotos, keine fremden Clipart-Grafiken. Fachliche Abbildungen und Diagramme sind reduziert, mit klaren Konturen, erklären Prozesse durch Pfeile und Beschriftungen und enthalten keine KI-typischen Fantasiedetails. Icons nur zur Kennzeichnung einer Arbeitsweise, immer mit Textlabel, als einheitliches lineares Set.',
+        'Abschlussprüfung: Prüfe fachliche Korrektheit, Zahlen, Einheiten, Quellen, eindeutige Operatoren, angemessene Antwortflächen, Farben laut Designsheet, Nummerierung und Textlabels. Das Blatt muss barrierearm und drucktauglich sein: gut lesbare Schrift und Linien, ausreichend Kontrast, kein Beschnitt wichtiger Inhalte, keine Vollflächen und auch als Schwarzweißdruck verständlich, weil Merk-, Aufgaben- und Tippkasten sich durch Rahmenart (durchgezogen, dunkel, gestrichelt) und Icon unterscheiden. Vermeide überladene Seiten, dekorative Elemente ohne Lernfunktion, winzige Schrift, Text auf unruhigen Bildern, reine Farbcodierung, uneinheitliche Icons und zu wenig Platz für Antworten.',
+        vorrang(s),
         abAusgabe[s.abFormat] || abAusgabe['Druckfertige HTML-Datei']
       ];
     }
   };
+  // Was die Lehrkraft unter „Visualisierung“ selbst angibt, gilt vor dem Designsheet.
+  function vorrang(s) {
+    var hat = s.mode === 'material' && ((s.visualisierung || []).length || (s.visualWunsch || '').trim());
+    return hat ? 'Vorrang: Meine Wünsche zur Visualisierung (siehe Ausgabeformat) gelten vor diesen Gestaltungsregeln. Widerspricht ein Wunsch einer Regel, setze den Wunsch um und nenne die Abweichung kurz am Ende.' : '';
+  }
   // Ohne Datei gehen Schriften, Farben und A4-Aufbau verloren – deshalb wird das Ausgabeformat ausdrücklich genannt.
   var abAusgabe = {
-    'Druckfertige HTML-Datei': 'Ausgabe: Gib das Arbeitsblatt als eine vollständige, druckfertige HTML-Datei aus: DIN A4 über CSS @page, jede Seite als eigener Abschnitt mit festem Seitenumbruch, Schriften mit Ersatzschriften (z. B. Georgia, Arial), falls Source Serif 4 oder DM Sans nicht installiert sind. Die Lösungsübersicht steht auf einer eigenen Seite am Ende. Kannst du keine Dateien erzeugen, gib den vollständigen HTML-Code in einem einzigen Codeblock aus.',
-    'Word-Datei (DOCX)': 'Ausgabe: Erstelle das Arbeitsblatt als Word-Datei (DOCX) im Format DIN A4 mit den genannten Schriften, Rändern und Abständen als Formatvorlagen; die Lösungsübersicht beginnt auf einer neuen Seite. Kannst du keine Dateien erzeugen, sage das zu Beginn und gib stattdessen eine druckfertige HTML-Datei in einem Codeblock aus.',
+    'Druckfertige HTML-Datei': 'Ausgabe: Gib das Arbeitsblatt als eine vollständige, druckfertige HTML-Datei aus: @page { size: A4 portrait; margin: 12mm; }, jedes Blatt als eigenes <main class="ab-blatt"> mit festem Seitenumbruch. Verwende die Klassennamen des Designsheets (ab-kopf, ab-kopf__meta, ab-kopf__feld, ab-kopf__label, ab-kopf__datum, ab-kopf__linie, ab-kopf__titel, ab-h2, ab-info, ab-kasten__titel, ab-aufgabe, ab-aufgabe__nr, ab-aufgabe__inhalt, ab-auftrag, ab-linien mit style="--zeilen: 4", ab-lueckentext, ab-luecke mit style="--breite: 40mm", ab-tipp, ab-tipp--zusatz, ab-trenner, ab-fuellen, ab-zwei-spalten), binde <link rel="stylesheet" href="arbeitsblatt.css"> ein und schreibe zusätzlich alle nötigen Regeln in ein <style>-Element, damit die Datei auch allein funktioniert; setze dort --font-text auf Verdana und überschreibe .ab-aufgabe__nr gemäß der Typografie-Regel für Aufgabenziffern. Schriften mit Ersatzschriften angeben („Patrick Hand“, „Comic Sans MS“, cursive bzw. Verdana, „Segoe UI“, Tahoma, sans-serif). Die Lösungsübersicht steht auf einem eigenen Blatt am Ende. Weise darauf hin, dass beim Drucken „Hintergrundgrafiken“ aktiviert sein muss. Kannst du keine Dateien erzeugen, gib den vollständigen HTML-Code in einem einzigen Codeblock aus.',
+    'Word-Datei (DOCX)': 'Ausgabe: Erstelle das Arbeitsblatt als Word-Datei (DOCX) im Format DIN A4 mit 12 mm Rand und den genannten Schriften, Farben und Abständen als Formatvorlagen (Kästen als Tabellenzellen mit Rahmen und heller Tönung); die Lösungsübersicht beginnt auf einer neuen Seite. Kannst du keine Dateien erzeugen, sage das zu Beginn und gib stattdessen eine druckfertige HTML-Datei in einem Codeblock aus.',
     'Nur Text': 'Ausgabe: Gib das Arbeitsblatt als gut gegliederten Text aus (Überschriften, nummerierte Aufgaben, Antwortlinien als „________“). Setze die Gestaltungsvorgaben um, soweit es im Text möglich ist, und nenne die übrigen am Ende als kurze Layout-Hinweise zum Übertragen in ein Textprogramm.'
   };
   fields.abFormat = {
@@ -599,7 +607,7 @@ var PB_DATA = (function () {
   };
   fields.aufgabenAnzahl = {
     type: 'stepper', label: 'Anzahl der Aufgaben auf dem Arbeitsblatt', unit: 'Aufgaben', def: 5, min: 1, max: 20, step: 1, quick: [3, 5, 8],
-    hint: 'Das Arbeitsblatt bekommt automatisch die Gestaltungsvorgaben (Mappenfarbe, Typografie, Seitenaufbau, Lösungsübersicht) und darf mehrere Seiten haben.',
+    hint: 'Das Arbeitsblatt bekommt automatisch die Gestaltungsvorgaben des Designsheets (Farben, Schriften, Kästen, Seitenaufbau, Lösungsübersicht) und darf mehrere Blätter haben.',
     showIf: arbeitsblatt.aktiv
   };
 
