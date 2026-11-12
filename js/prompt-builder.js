@@ -101,6 +101,9 @@ var PB = (function () {
 
     sec('Ausgabeformat', b.format.concat(mode.ausgabe || []), true);
 
+    var ab = data.arbeitsblatt;
+    if (ab && ab.aktiv(s)) out.push('## ' + ab.titel + '\n' + ab.text(s, h).join('\n\n'));
+
     var q = T.qualitaet.slice();
     if (mode.pruefen) q.push(T.pruefenRegel);
     if (detail) q = q.concat(T.qualitaetDetail);

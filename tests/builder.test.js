@@ -139,6 +139,31 @@ test('iPad-Schulregel nur bei iPad, Ausnahme per Schalter', function () {
   assert.ok(p.indexOf('OneNote') === -1, 'analog: keine iPad-Regel');
 });
 
+test('Arbeitsblatt-Vorlage: automatisch, Lücken gefüllt', function () {
+  var s = example('material'); // Mathematik, Jg. 7, Arbeitsblatt, ohne Lernziel
+  var p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('## Gestaltung des Arbeitsblatts') > p.indexOf('## Ausgabeformat'));
+  assert.ok(p.indexOf('Aufgabenblatt für Mathematik, Klasse 7 der Sekundarstufe I (Klassen 5–10), zum Thema „Prozentrechnung am Marktstand des Zauberdorfs Kerbelstein“, mit dem Lernziel einem klar formulierten') !== -1);
+  assert.ok(p.indexOf('und 5 Aufgaben.') !== -1 && p.indexOf('darf mehrere Seiten umfassen') !== -1);
+  assert.ok(p.indexOf('Mappenfarbe für Mathematik, Blau #466BB0') !== -1 && p.indexOf('Deutsch Rot #BD3D42') === -1, 'nur die passende Farbe');
+  assert.ok(!/\[(Fach|Stufe|Thema|Lernziel|Anzahl)\]/.test(p));
+  s.lernziel = 'Die Lernenden berechnen Rabatte.'; s.aufgabenAnzahl = 8; s.jahrgang = '11'; s.fach = 'Politik-Wirtschaft';
+  p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('Klasse 11 der Sekundarstufe II') !== -1 && p.indexOf('mit dem Lernziel „Die Lernenden berechnen Rabatte.“ und 8 Aufgaben') !== -1);
+  assert.ok(p.indexOf('Wähle genau die passende Mappenfarbe') !== -1, 'Fach ohne Mappenfarbe: Liste');
+  assert.ok(p.indexOf('Lass keinen Aufgabenblock über einen Seitenumbruch laufen') !== -1);
+  assert.ok(p.indexOf('Ausgabe: Gib das Arbeitsblatt als eine vollständige, druckfertige HTML-Datei aus') !== -1, 'Standard: HTML');
+  s.abFormat = 'Word-Datei (DOCX)'; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('als Word-Datei (DOCX)') !== -1 && p.indexOf('druckfertige HTML-Datei aus:') === -1);
+  s.abFormat = 'Nur Text'; assert.ok(PB.buildPrompt(s, D).indexOf('als gut gegliederten Text aus') !== -1);
+  assert.ok(PB.buildPrompt(s, D).trim().split('## Gestaltung des Arbeitsblatts')[1].indexOf('## Qualitätsregeln') !== -1, 'Abschnitt vor den Qualitätsregeln');
+  s.materialTyp = 'Quiz'; assert.ok(PB.buildPrompt(s, D).indexOf('Gestaltung des Arbeitsblatts') === -1);
+  var st = example('stunde'); // Deutsch, mit Arbeitsblatt
+  assert.ok(PB.buildPrompt(st, D).indexOf('Mappenfarbe für Deutsch, Rot #BD3D42') !== -1);
+  st.stundenMaterial = ['Tafelbild']; assert.ok(PB.buildPrompt(st, D).indexOf('Gestaltung des Arbeitsblatts') === -1);
+  assert.ok(PB.buildPrompt(example('klassenarbeit'), D).indexOf('Gestaltung des Arbeitsblatts') === -1);
+});
+
 test('Anderes Fach', function () {
   var s = example('material'); s.fach = 'Anderes'; s.fachAnders = 'Darstellendes Spiel';
   assert.ok(PB.buildPrompt(s, D).indexOf('Fach: Darstellendes Spiel') !== -1);

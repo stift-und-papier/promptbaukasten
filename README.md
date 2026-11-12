@@ -32,6 +32,7 @@ Weitere Funktionen:
 | Prompt kompakt oder ausführlich | Karte „Ausgabe“ |
 | Passende Arbeitsblätter und Materialien zur Stunde mit anfordern | Modus Unterrichtsstunde |
 | iPad-Schulregel (Papier, Foto in OneNote; Ausnahme z. B. gemeinsames Dokument auf IServ) | erscheint automatisch, wenn „digital“/„hybrid“ und Gerät „iPad“ gewählt sind; Texte in `texte.ipadRegel` |
+| Gestaltungsvorlage für Arbeitsblätter (Mappenfarbe je Fach, Typografie, Seitenaufbau, Lösungsübersicht; mehrseitig erlaubt) | wird automatisch angehängt bei Material → „Arbeitsblatt“ oder Unterrichtsstunde → Material „Arbeitsblatt“; Text und Farben in `arbeitsblatt` / `mappenfarben`. Ausgabe wählbar als druckfertige HTML-Datei (Standard), Word-Datei oder nur Text (`abAusgabe`) |
 | Wünsche zur Visualisierung (optional) | Modi Material, Slides, Klassenarbeit |
 | Dunkelmodus ein/aus | Schalter in der Kopfleiste. Ohne eigene Wahl folgt die App der Systemeinstellung; die Wahl wird im Browser gespeichert. |
 
