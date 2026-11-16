@@ -2,8 +2,7 @@
 (function () {
   'use strict';
   var D = PB_DATA, F = D.fields, T = D.texte;
-  var LS = { state: 'pb.state', profiles: 'pb.profiles', history: 'pb.history', ka: 'pb.ka', hint: 'pb.copyHintShown', theme: 'pb.theme' };
-  var KA_KEYS = ['fach', 'fachAnders', 'jahrgang', 'thema', 'zweige', 'punkte', 'afbVert'];
+  var LS = { state: 'pb.state', profiles: 'pb.profiles', hint: 'pb.copyHintShown', theme: 'pb.theme' };
 
   // localStorage kann gesperrt sein (privater Modus, file:// in manchen Browsern) – dann läuft die App ohne Speicherung.
   function load(k, fb) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } }
@@ -63,26 +62,14 @@
       if (old) old.replaceWith(renderField(F.diffZweige));
     }
     save(LS.state, state);
-    if (state.mode === 'klassenarbeit') saveKa();
     updateVisibility();
     updatePreview();
   }
   function set(id, v) { state[id] = v; afterChange(id); }
 
-  function saveKa() {
-    var snap = {};
-    KA_KEYS.forEach(function (k) { snap[k] = clone(state[k]); });
-    save(LS.ka, snap);
-  }
-
+  // Alle Modi teilen sich einen Zustand: Fach, Thema usw. bleiben beim Wechsel erhalten.
   function setMode(id) {
     if (id === state.mode) return;
-    var oldM = PB.getMode(D, state.mode), newM = PB.getMode(D, id);
-    if (state.mode === 'klassenarbeit') saveKa();
-    // Modus-Voreinstellungen nur übernehmen, wenn der Wert noch der alten Voreinstellung entspricht
-    Object.keys(newM.defaults || {}).forEach(function (k) {
-      if (PB.isEmpty(state[k]) || state[k] === (oldM.defaults || {})[k] || state[k] === F[k].def) state[k] = newM.defaults[k];
-    });
     state.mode = id;
     commit();
   }
@@ -240,7 +227,7 @@
         break;
       case 'action':
         wrap = el('div', { class: 'field', 'data-field': f.id }, [
-          el('button', { type: 'button', class: 'btn secondary', html: icon(f.action === 'toEwh' ? 'arrowRight' : 'wand') + '<span></span>', onclick: actions[f.action] })]);
+          el('button', { type: 'button', class: 'btn secondary', html: icon('arrowRight') + '<span></span>', onclick: actions[f.action] })]);
         wrap.firstChild.lastChild.textContent = f.label;
         break;
     }
@@ -327,7 +314,6 @@
         var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
         return toast('Kopieren nicht möglich. Der Prompt ist markiert – kopiere ihn mit Strg/⌘ + C.');
       }
-      addHistory();
       if (!load(LS.hint, false)) { save(LS.hint, true); toast(T.kopierHinweis); }
       else toast('Prompt kopiert.' + (state.thema.trim() ? '' : ' Hinweis: Das Thema fehlt noch.'));
     });
@@ -342,39 +328,9 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   }
-  function downloadPrompt(ext) {
-    var mode = PB.getMode(D, state.mode), p = currentPrompt();
-    if (ext === 'md') p = '# Prompt: ' + mode.label + (state.thema.trim() ? ' – ' + state.thema.trim() : '') + '\n\n' + p;
-    downloadFile('prompt-' + mode.id + '-' + slug(state.thema) + '.' + ext, p, ext === 'md' ? 'text/markdown' : 'text/plain');
-    addHistory();
+  function downloadPrompt() {
+    downloadFile('prompt-' + state.mode + '-' + slug(state.thema) + '.txt', currentPrompt(), 'text/plain');
     toast('Download gestartet.');
-  }
-
-  function addHistory() {
-    var h = load(LS.history, []);
-    if (!Array.isArray(h)) h = [];
-    var snap = clone(state);
-    if (h[0] && JSON.stringify(h[0].state) === JSON.stringify(snap)) h.shift();
-    h.unshift({ ts: Date.now(), state: snap });
-    save(LS.history, h.slice(0, 10));
-  }
-
-  function renderHistory() {
-    var list = $('historyList'), h = load(LS.history, []);
-    list.innerHTML = '';
-    if (!Array.isArray(h) || !h.length) { list.appendChild(el('li', { class: 'empty', text: 'Noch nichts kopiert oder heruntergeladen.' })); return; }
-    h.forEach(function (e) {
-      var s = PB.sanitizeState(e.state, D), m = PB.getMode(D, s.mode);
-      list.appendChild(el('li', {}, [
-        el('div', { class: 'list-text' }, [
-          el('strong', { text: s.thema || 'Ohne Thema' }),
-          el('span', { class: 'small muted', text: m.label + ' · ' + new Date(e.ts).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) })]),
-        el('button', { type: 'button', class: 'btn', text: 'Kopieren', onclick: function () { copyText(PB.buildPrompt(s, D)).then(function (ok) { toast(ok ? 'Prompt aus dem Verlauf kopiert.' : 'Kopieren nicht möglich.'); }); } }),
-        el('button', { type: 'button', class: 'btn primary', text: 'Wiederherstellen', onclick: function () {
-          var prev = clone(state); state = s; $('dlgHistory').close(); commit(); undoable('Eintrag wiederhergestellt.', prev);
-        } })
-      ]));
-    });
   }
 
   // ---------------- Profile ----------------
@@ -436,25 +392,15 @@
   // ---------------- Aktionen ----------------
   var actions = {
     toEwh: function () {
-      saveKa();
-      setMode('ewh');
       state.bezug = 'Zur oben geplanten Klassenarbeit';
-      commit();
-      toast('Erwartungshorizont: Fach, Jahrgang, Thema, Zweige, Punkte und Anforderungsbereiche übernommen.');
-    },
-    takeKa: function () {
-      var snap = load(LS.ka, null);
-      if (!snap) return toast('Noch keine Klassenarbeit geplant. Fülle zuerst den Modus „Klassenarbeit“ aus.');
-      var prev = clone(state), clean = PB.sanitizeState(snap, D);
-      KA_KEYS.forEach(function (k) { if (k in snap) state[k] = clean[k]; });
-      commit();
-      undoable('Felder der Klassenarbeit übernommen.', prev);
+      setMode('ewh');
+      toast('Erwartungshorizont: Fach, Thema, Zweige, Punkte und Anforderungsbereiche sind übernommen.');
     }
   };
 
   function resetForm() {
     var prev = clone(state), mode = PB.getMode(D, state.mode);
-    state = PB.defaultState(D); state.mode = mode.id; Object.assign(state, mode.defaults || {});
+    state = PB.defaultState(D); state.mode = mode.id;
     commit();
     undoable('Formular zurückgesetzt.', prev);
   }
@@ -462,7 +408,7 @@
   function loadExample() {
     var prev = clone(state), mode = PB.getMode(D, state.mode);
     state = PB.defaultState(D); state.mode = mode.id;
-    Object.assign(state, mode.defaults || {}, clone(mode.example));
+    Object.assign(state, clone(mode.example));
     commit();
     undoable('Beispiel „' + mode.label + '“ geladen.', prev);
   }
@@ -491,12 +437,10 @@
     window.addEventListener('resize', setHeaderH);
 
     document.querySelectorAll('[data-copy]').forEach(function (b) { b.addEventListener('click', copyPrompt); });
-    $('btnTxt').addEventListener('click', function () { downloadPrompt('txt'); });
-    $('btnMd').addEventListener('click', function () { downloadPrompt('md'); });
+    $('btnTxt').addEventListener('click', downloadPrompt);
     $('btnReset').addEventListener('click', resetForm);
     $('btnExample').addEventListener('click', loadExample);
     $('btnProfiles').addEventListener('click', function () { renderProfiles(); $('dlgProfiles').showModal(); });
-    $('btnHistory').addEventListener('click', function () { renderHistory(); $('dlgHistory').showModal(); });
     $('btnSaveProfile').addEventListener('click', saveProfile);
     $('profileName').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); saveProfile(); } });
     $('btnExport').addEventListener('click', exportProfiles);

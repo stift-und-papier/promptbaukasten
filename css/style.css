@@ -131,7 +131,6 @@ p { margin: 0; }
 .uploads .tile { background: var(--t-pink); }
 .notice .tile { background: var(--t-blue); width: 32px; height: 32px; border-radius: 10px; }
 .notice .tile .icon { width: 18px; height: 18px; }
-kbd { font: inherit; font-size: 14px; padding: 0 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
 
 /* ---------- Buttons ---------- */
 .btn, .icon-btn {
@@ -318,7 +317,6 @@ input[type=range] { width: 100%; max-width: 420px; min-height: 44px; accent-colo
 }
 .preview-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .preview-actions .btn.primary { flex: 1 1 auto; }
-.kbd-hint { line-height: 1.8; padding: 0 8px; }
 .followups { border-top: 1px solid var(--border); padding: 8px 8px 0; }
 .followups ul, .list { list-style: none; margin: 8px 0 0; padding: 0; }
 .followups li, .list li { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--border); }

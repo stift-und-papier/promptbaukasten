@@ -43,7 +43,11 @@ var PB = (function () {
     Object.keys(s).forEach(function (k) {
       var v = obj[k], d = s[k];
       if (v === undefined || v === null) return;
-      if (Array.isArray(d)) { if (Array.isArray(v)) s[k] = v.filter(function (x) { return typeof x === 'string'; }); }
+      if (Array.isArray(d)) {
+        // Nur Werte, die es als Option noch gibt (z. B. gestrichener Zweig „Oberstufe“ in alten Profilen)
+        var opts = data.fields[k] && data.fields[k].options;
+        if (Array.isArray(v)) s[k] = v.filter(function (x) { return typeof x === 'string' && (!opts || opts.indexOf(x) !== -1); });
+      }
       else if (d && typeof d === 'object') {
         if (typeof v === 'object') Object.keys(d).forEach(function (kk) { if (typeof v[kk] === 'number') s[k][kk] = v[kk]; });
       }
@@ -61,17 +65,17 @@ var PB = (function () {
   function uploadIdsForMode(data, mode) { return data.uploadsBase.concat(mode.uploads || []); }
 
   function buildPrompt(s, data) {
-    var mode = getMode(data, s.mode), T = data.texte, detail = s.promptStil !== 'kompakt';
+    var mode = getMode(data, s.mode), T = data.texte;
     var fach = s.fach === 'Anderes' ? (s.fachAnders || '').trim() : s.fach;
     var h = {
       fach: fach || '', fachKlammer: fach ? ' (' + fach + ')' : '',
       thema: (s.thema || '').trim() || '[Thema ergänzen]'
     };
 
-    var b = { kontext: [], aufgabe: [], methodik: [], diff: [], einsatz: [], format: [] };
+    var b = { kontext: [], aufgabe: [], methodik: [], diff: [], einsatz: [], recherche: [], format: [] };
     fieldIdsForMode(data, s.mode).forEach(function (id) {
       var f = data.fields[id];
-      if (!f || !f.section || !f.tpl || !isVisible(f, s) || isEmpty(s[id])) return;
+      if (!f || !f.section || !f.tpl || !isVisible(f, s) || (isEmpty(s[id]) && !f.always)) return;
       b[f.section] = b[f.section].concat(render(f.tpl, s[id], s));
     });
 
@@ -89,12 +93,12 @@ var PB = (function () {
       out.push('## ' + title + '\n' + lines.map(function (l) { return bullets ? '- ' + l : l; }).join('\n'));
     }
 
-    sec('Rolle', [[T.rolleBasis.replace('{fach}', fach ? ' für ' + fach : ''), mode.rolle, detail ? T.rolleDetail : ''].filter(Boolean).join(' ')]);
+    sec('Rolle', [[T.rolleBasis.replace('{fach}', fach ? ' für ' + fach : ''), mode.rolle, T.rolleDetail].join(' ')]);
     sec('Kontext', b.kontext, true);
-    sec('Aufgabe', [aufgabe].concat(b.aufgabe.map(function (l) { return '- ' + l; }), detail ? (mode.detail || []).map(function (l) { return '- ' + l; }) : []));
+    sec('Aufgabe', [aufgabe].concat(b.aufgabe.concat(mode.detail || []).map(function (l) { return '- ' + l; })));
 
     var anf = [];
-    [['Methodik', b.methodik], ['Differenzierung', b.diff], ['Einsatz (digital/analog)', b.einsatz]].forEach(function (p) {
+    [['Methodik', b.methodik], ['Differenzierung', b.diff], ['Einsatz (digital/analog)', b.einsatz], ['Recherche', b.recherche]].forEach(function (p) {
       if (p[1].length) anf.push('### ' + p[0] + '\n' + p[1].map(function (l) { return '- ' + l; }).join('\n'));
     });
     if (anf.length) out.push('## Anforderungen\n' + anf.join('\n\n'));
@@ -105,10 +109,10 @@ var PB = (function () {
     if (ab && ab.aktiv(s)) out.push('## ' + ab.titel + '\n' + ab.text(s, h).filter(function (x) { return !isEmpty(x); }).join('\n\n'));
 
     // Rückfragen stehen immer zuerst: Die KI klärt Unklarheiten, bevor sie etwas erstellt.
-    var q = [T.rueckfragen].concat(T.qualitaet);
-    if (mode.pruefen) q.push(T.pruefenRegel);
-    if (detail) q = q.concat(T.qualitaetDetail);
+    // Die Prüf-Liste „Das solltest du prüfen“ bleibt die letzte Regel.
+    var q = [T.rueckfragen].concat(T.qualitaet.slice(0, -1), mode.pruefen ? [T.pruefenRegel] : [], T.qualitaet.slice(-1));
     sec('Qualitätsregeln', q, true);
+    sec('Selbstkritik', T.kritik);
 
     var beispiele = upIds.filter(function (id) { return checked.indexOf(id) === -1; })
       .map(function (id) { return data.uploadCatalog[id]; });

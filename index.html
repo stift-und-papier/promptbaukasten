@@ -30,7 +30,6 @@
         </label>
         <button type="button" class="btn ghost" id="btnExample" data-icon="sparkle">Beispiel laden</button>
         <button type="button" class="btn ghost" id="btnProfiles" data-icon="save">Profile</button>
-        <button type="button" class="btn ghost" id="btnHistory" data-icon="history">Verlauf</button>
         <button type="button" class="btn ghost" id="btnReset" data-icon="reset">Zurücksetzen</button>
       </div>
     </div>
@@ -72,10 +71,8 @@
         <pre class="prompt" id="promptOut" tabindex="0" aria-label="Erzeugter Prompt"></pre>
         <div class="preview-actions">
           <button type="button" class="btn primary" data-copy data-icon="copy">Kopieren</button>
-          <button type="button" class="btn" id="btnTxt" data-icon="download">.txt</button>
-          <button type="button" class="btn" id="btnMd" data-icon="download">.md</button>
+          <button type="button" class="btn" id="btnTxt" data-icon="download">Als Datei speichern</button>
         </div>
-        <p class="small muted kbd-hint"><kbd>⌘</kbd>/<kbd>Strg</kbd> + <kbd>Enter</kbd> kopiert · <kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>7</kbd> wechselt den Modus</p>
         <details class="followups">
           <summary><h3>Nachschärfen</h3><span class="chev" data-icon="chevron"></span></summary>
           <p class="small muted">Folgeprompts für denselben Chat, nachdem die KI geantwortet hat.</p>
@@ -102,15 +99,6 @@
       <button type="button" class="btn" id="btnImport" data-icon="upload">Importieren</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
-  </dialog>
-
-  <dialog id="dlgHistory" aria-labelledby="dlgHistoryTitle">
-    <form method="dialog" class="dlg-head">
-      <h2 id="dlgHistoryTitle">Verlauf</h2>
-      <button class="icon-btn" aria-label="Schließen" data-icon="close"></button>
-    </form>
-    <p class="small muted">Die letzten 10 kopierten oder heruntergeladenen Prompts.</p>
-    <ul class="list" id="historyList"></ul>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden>

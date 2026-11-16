@@ -12,7 +12,7 @@
 var PB_DATA = (function () {
   function list(a) { return (a || []).join(', '); }
 
-  var ZWEIGE = ['Hauptschule', 'Realschule', 'Gymnasium', 'Oberstufe (Q-Phase)', 'Gemischte Lerngruppe (KGS)'];
+  var ZWEIGE = ['Hauptschule', 'Realschule', 'Gymnasium', 'Gemischte Lerngruppe (KGS)'];
 
   var fields = {
     // ---------- Grundlagen ----------
@@ -30,7 +30,9 @@ var PB_DATA = (function () {
     },
     jahrgang: {
       type: 'seg', label: 'Jahrgang', def: '', rec: true, section: 'kontext',
-      options: ['5', '6', '7', '8', '9', '10', '11', '12', '13'], tpl: 'Jahrgang: {v}'
+      options: ['5', '6', '7', '8', '9', '10', '11', '12', '13'],
+      // Die Oberstufe ergibt sich aus dem Jahrgang, ein eigener Zweig-Button ist überflüssig.
+      tpl: function (v) { return 'Jahrgang: ' + v + (Number(v) >= 11 ? ' (Oberstufe)' : ''); }
     },
     thema: {
       type: 'text', label: 'Thema', def: '', required: true, pii: true,
@@ -41,18 +43,34 @@ var PB_DATA = (function () {
       options: ['Baden-Württemberg', 'Bayern', 'Berlin', 'Brandenburg', 'Bremen', 'Hamburg', 'Hessen',
         'Mecklenburg-Vorpommern', 'Niedersachsen', 'Nordrhein-Westfalen', 'Rheinland-Pfalz', 'Saarland',
         'Sachsen', 'Sachsen-Anhalt', 'Schleswig-Holstein', 'Thüringen'],
-      tpl: 'Bundesland: {v}'
-    },
-    kc: {
-      type: 'toggle', label: 'Kerncurriculum berücksichtigen', def: true, section: 'kontext',
-      tpl: function (v, s) {
-        return 'Orientiere dich am Kerncurriculum bzw. Lehrplan ' + (s.bundesland ? 'des Landes ' + s.bundesland + ' ' : '') +
-          'für dieses Fach und diesen Jahrgang. Erfinde keine Kompetenzformulierungen; markiere Zuordnungen, die du nicht sicher weißt, mit [unsicher].';
+      // Der Kerncurriculum-Bezug gehört immer dazu, deshalb hängt er am Bundesland statt an einem eigenen Schalter.
+      tpl: function (v) {
+        return ['Bundesland: ' + v, 'Orientiere dich am Kerncurriculum bzw. Lehrplan des Landes ' + v +
+          ' für dieses Fach und diesen Jahrgang. Erfinde keine Kompetenzformulierungen; markiere Zuordnungen, die du nicht sicher weißt, mit [unsicher].'];
       }
     },
     zweige: {
       type: 'chips', label: 'Schulform / Zweig', hint: 'Mehrfachauswahl möglich', def: [], rec: true,
       section: 'kontext', options: ZWEIGE, tpl: 'Schulform / Zweig: {v}'
+    },
+    recherche: {
+      type: 'toggle', label: 'Recherche im Internet', def: false, section: 'recherche', hideIn: ['ewh'],
+      hint: 'Die KI sucht aktuelle Quellen und belegt ihre Angaben. Klappt nur, wenn die KI Zugriff auf das Internet hat.',
+      tpl: function (v, s) {
+        var z = s.rechercheZeitraum;
+        return [
+          'Recherchiere zum Thema im Internet und stütze Fakten, Zahlen und Beispiele auf verlässliche Quellen (z. B. Behörden, wissenschaftliche Einrichtungen, Bildungsserver, Qualitätsmedien).',
+          // „letzte 30 Tage“ → „in den letzten 30 Tagen“ (Dativ Plural)
+          z && z !== 'beliebig' ? 'Verwende nur Quellen, die in den ' + z.replace('letzte', 'letzten') + 'n (gerechnet ab heute) veröffentlicht oder aktualisiert wurden. Findest du dazu nichts Verlässliches, sage das, statt auf ältere Quellen auszuweichen.' : '',
+          'Belege jede recherchierte Angabe mit Titel, Herausgeber, Datum und Link und gib am Ende ein Quellenverzeichnis aus. Erfinde keine Quellen oder Links.',
+          'Hast du keinen Internetzugriff, sage das gleich zu Beginn und kennzeichne zeitkritische Angaben mit [unsicher].'
+        ];
+      }
+    },
+    rechercheZeitraum: {
+      type: 'seg', label: 'Wie aktuell sollen die Quellen sein?', def: 'beliebig', hideIn: ['ewh'],
+      options: ['beliebig', 'letzte 7 Tage', 'letzte 30 Tage', 'letzte 12 Monate', 'letzte 5 Jahre'],
+      showIf: function (s) { return s.recherche; }
     },
 
     // ---------- Lerngruppe ----------
@@ -76,31 +94,25 @@ var PB_DATA = (function () {
     },
 
     // ---------- Differenzierung ----------
-    diff: {
-      type: 'seg', label: 'Differenzierung', def: 'Nein', options: ['Nein', 'Ja'], section: 'diff',
-      tpl: function (v, s) {
-        if (v !== 'Ja') return '';
-        var lines = ['Differenziere das Ergebnis für eine heterogene Lerngruppe.'];
+    // Keine Auswahl = keine Differenzierung; ein eigener Ja/Nein-Schalter wäre ein überflüssiger Klick.
+    diffArt: {
+      type: 'chips', label: 'Art der Differenzierung', hint: 'Leer lassen, wenn nicht differenziert werden soll', def: [], section: 'diff',
+      options: ['Drei Niveaustufen', 'Hilfekarten', 'Wahlaufgaben', 'Sprachsensibel', 'Zusatzaufgaben für Schnelle'],
+      tpl: function (v) {
         var map = {
-          'Drei Niveaustufen': 'in drei Niveaustufen (grundlegend, mittel, erweitert), deutlich gekennzeichnet',
-          'Hilfekarten': 'mit gestuften Hilfekarten (Tipp 1, Tipp 2, Lösungsweg)',
-          'Wahlaufgaben': 'mit Wahlaufgaben, zwischen denen die Lernenden wählen können',
-          'Sprachsensibel': 'sprachsensibel (Wortspeicher, Satzanfänge, einfache Satzstrukturen)',
-          'Zusatzaufgaben für Schnelle': 'mit Zusatzaufgaben für schnelle Lernende'
+          'Drei Niveaustufen': 'Differenziere in drei Niveaustufen (grundlegend, mittel, erweitert) und kennzeichne sie deutlich, ohne schwächere Lernende bloßzustellen (z. B. Symbole statt „leicht/schwer“).',
+          'Hilfekarten': 'Ergänze gestufte Hilfekarten (Tipp 1: Denkanstoß, Tipp 2: Teilschritt, Tipp 3: Lösungsweg).',
+          'Wahlaufgaben': 'Biete Wahlaufgaben an, die zum selben Lernziel führen.',
+          'Sprachsensibel': 'Gestalte sprachsensibel: Wortspeicher mit Artikeln, Satzanfänge, kurze Sätze, Fachbegriffe erklärt.',
+          'Zusatzaufgaben für Schnelle': 'Ergänze Zusatzaufgaben für schnelle Lernende, die vertiefen statt nur mehr vom Gleichen zu verlangen.'
         };
-        (s.diffArt || []).forEach(function (a) { lines.push('Differenzierung ' + (map[a] || a) + '.'); });
-        if ((s.diffZweige || []).length) lines.push('Differenziere auf diese Zweige: ' + list(s.diffZweige) + '.');
-        return lines;
+        return v.map(function (a) { return map[a] || a; });
       }
     },
-    diffArt: {
-      type: 'chips', label: 'Art der Differenzierung', def: [],
-      options: ['Drei Niveaustufen', 'Hilfekarten', 'Wahlaufgaben', 'Sprachsensibel', 'Zusatzaufgaben für Schnelle'],
-      showIf: function (s) { return s.diff === 'Ja'; }
-    },
     diffZweige: {
-      type: 'chips', label: 'Differenzieren auf Zweige', def: [], options: ZWEIGE, optionsFrom: 'zweige',
-      showIf: function (s) { return s.diff === 'Ja'; }
+      type: 'chips', label: 'Differenzieren auf Zweige', def: [], options: ZWEIGE, optionsFrom: 'zweige', section: 'diff',
+      showIf: function (s) { return (s.zweige || []).length !== 1; },
+      tpl: 'Differenziere auf diese Zweige und mache die Unterschiede in Anspruch, Hilfen und Umfang sichtbar: {v}.'
     },
 
     // ---------- Methodik und Einsatz ----------
@@ -151,17 +163,12 @@ var PB_DATA = (function () {
     },
 
     // ---------- Ausgabe ----------
-    format: {
-      type: 'seg', label: 'Ausgabeformat', def: 'Stichpunkte', section: 'format', hideIn: ['ewh'],
-      options: ['Tabelle', 'Stichpunkte', 'Fließtext', 'Arbeitsblatt-Layout', 'Folienliste', 'Checkliste'],
-      // Beim Arbeitsblatt legen Dateiformat und Designsheet die Form fest – ein zweites „Ausgabeformat“ würde verwirren.
-      showIf: function (s) { return !arbeitsblatt.aktiv(s); },
-      tpl: 'Format: {v}'
-    },
+    // Die Form des Ergebnisses legt jeder Modus selbst fest (mode.ausgabe); ein freies „Format“ widersprach dem oft.
     laenge: {
       type: 'seg', label: 'Länge des Ergebnisses', def: 'mittel', options: ['kurz', 'mittel', 'ausführlich'], section: 'format',
       hint: 'kurz ≈ 1 Seite · mittel ≈ 1–2 Seiten · ausführlich ≈ 2–4 Seiten (DIN A4, ohne Lösungen)',
-      // Beim Arbeitsblatt bestimmt die Anzahl der Aufgaben den Umfang.
+      // Bei Einstieg, Slides und Prüfungen bestimmen Dauer, Folien oder Punkte den Umfang, beim Arbeitsblatt die Aufgabenzahl.
+      hideIn: ['einstieg', 'slides', 'klassenarbeit', 'ewh'],
       showIf: function (s) { return !arbeitsblatt.aktiv(s); },
       tpl: function (v) {
         return 'Länge: ' + ({
@@ -172,13 +179,12 @@ var PB_DATA = (function () {
       }
     },
     sprache: { type: 'seg', label: 'Sprache des Ergebnisses', def: 'Deutsch', options: ['Deutsch', 'Englisch'], section: 'format', tpl: 'Sprache des Ergebnisses: {v}' },
-    promptStil: { type: 'seg', label: 'Prompt-Umfang', def: 'ausführlich', options: ['kompakt', 'ausführlich'], hint: 'Kompakt lässt erläuternde Zusätze weg.' },
 
     // ---------- Modus: Stundeneinstieg ----------
     einstiegTyp: {
       type: 'chips', label: 'Einstiegstyp', def: [], rec: true, section: 'aufgabe',
       options: ['Bild', 'Rätsel', 'Provokation', 'Alltagsbezug', 'Hypothese'],
-      tpl: 'Gewünschte Art des Einstiegs: {v}. Er soll zu einer klaren Problemfrage für die Stunde führen.'
+      tpl: 'Gewünschte Art des Einstiegs: {v}.'
     },
     einstiegDauer: {
       type: 'stepper', label: 'Dauer des Einstiegs', unit: 'Minuten', def: 10, min: 5, max: 10, step: 1, quick: [5, 10],
@@ -215,7 +221,16 @@ var PB_DATA = (function () {
     materialTyp: {
       type: 'seg', label: 'Materialtyp', def: 'Arbeitsblatt', section: 'aufgabe',
       options: ['Arbeitsblatt', 'Sachtext', 'Aufgabenset', 'Tafelbild', 'Quiz', 'Lernstationen'],
-      tpl: 'Materialtyp: {v}.'
+      // Arbeitsblatt: die Vorgaben stehen ausführlich im Abschnitt „Gestaltung des Arbeitsblatts“.
+      tpl: function (v) {
+        return ({
+          Sachtext: 'Schreibe einen sachlich korrekten, altersgerechten Sachtext mit Überschrift, Zwischenüberschriften, Zeilennummern (alle fünf Zeilen) und Worterklärungen zu schwierigen Begriffen. Ergänze 3–5 Aufgaben zum Textverständnis mit steigendem Anspruch.',
+          Aufgabenset: 'Ordne die Aufgaben mit steigendem Anspruch an (Wiedergeben → Anwenden → Beurteilen), beginne jede mit einem Operator und füge Lösungen getrennt an.',
+          Tafelbild: 'Entwirf ein strukturiertes Tafelbild (Überschrift, Kernbegriffe, Pfeile und Beziehungen), das auf eine Tafelhälfte passt. Stelle es als Text-Skizze dar und beschreibe kurz, in welcher Reihenfolge es im Unterricht entsteht.',
+          Quiz: 'Formuliere eindeutige Fragen mit plausiblen Falschantworten (keine offensichtlich absurden Distraktoren) und liefere einen Lösungsschlüssel mit kurzer Begründung je Frage.',
+          Lernstationen: 'Plane Pflicht- und Wahlstationen; nenne je Station Ziel, Arbeitsauftrag, Material, Zeitbedarf und Selbstkontrolle und füge einen Laufzettel bei.'
+        })[v] || '';
+      }
     },
 
     // ---------- Modus: Slides ----------
@@ -253,10 +268,6 @@ var PB_DATA = (function () {
       options: ['Offene Aufgaben', 'Multiple Choice', 'Lückentext', 'Zuordnung', 'Materialaufgabe', 'Textproduktion'],
       tpl: 'Aufgabenformate: {v}.'
     },
-    operatoren: {
-      type: 'toggle', label: 'Operatoren des Fachs verwenden', def: true, section: 'aufgabe',
-      tpl: 'Formuliere alle Aufgaben mit den Operatoren des Fachs (gemäß der Operatorenliste des Landes) und ordne jeder Aufgabe einen Anforderungsbereich zu.'
-    },
     hilfsmittel: {
       type: 'chips', label: 'Hilfsmittel', def: [], section: 'aufgabe',
       options: ['Keine', 'Wörterbuch', 'Formelsammlung', 'Taschenrechner', 'Material'],
@@ -280,9 +291,17 @@ var PB_DATA = (function () {
 
     // ---------- Visualisierung (Material, Slides, Klassenarbeit) ----------
     visualisierung: {
-      type: 'chips', label: 'Visualisierung', optional: true, def: [], section: 'format',
+      type: 'chips', label: 'Visualisierung', optional: true, def: [], section: 'format', always: true,
+      hint: 'Ohne „Icons / Piktogramme“ nutzt die KI nur Symbole, die Word bzw. PowerPoint selbst bereitstellen.',
       options: ['Diagramme', 'Tabellen', 'Bildvorschläge', 'Icons / Piktogramme', 'Farbcodierung', 'Mindmap / Strukturbild', 'Zeitleiste'],
-      tpl: 'Gewünschte Visualisierungen: {v}. Beschreibe Bilder und Grafiken als Vorschlag (Inhalt, Beschriftung) und erfinde keine Bildquellen.'
+      tpl: function (v, s) {
+        return [
+          v.length ? 'Gewünschte Visualisierungen: ' + list(v) + '. Beschreibe Bilder und Grafiken als Vorschlag (Inhalt, Beschriftung) und erfinde keine Bildquellen.' : '',
+          // Beim Arbeitsblatt steht die Regel ausführlich unter „Bildsprache“.
+          v.indexOf('Icons / Piktogramme') === -1 && !arbeitsblatt.aktiv(s)
+            ? 'Zeichne keine eigenen Icons. Verwende nur Symbole, die Word bzw. PowerPoint selbst erzeugen können (Einfügen → Symbol, Formen oder Piktogramme), einfarbig und mit Textlabel.' : ''
+        ];
+      }
     },
     visualWunsch: {
       type: 'textarea', label: 'Weitere Wünsche zur Visualisierung', optional: true, def: '', pii: true, section: 'format',
@@ -290,16 +309,12 @@ var PB_DATA = (function () {
       tpl: 'Wünsche zur Visualisierung: {v}'
     },
 
-    ewhButton: { type: 'action', label: 'Erwartungshorizont dazu erstellen', action: 'toEwh', hint: 'Wechselt den Modus und übernimmt Fach, Jahrgang, Thema, Zweige, Punkte und Anforderungsbereiche.' },
+    ewhButton: { type: 'action', label: 'Erwartungshorizont dazu erstellen', action: 'toEwh', hint: 'Wechselt zum Erwartungshorizont; Fach, Thema, Zweige, Punkte und Anforderungsbereiche bleiben erhalten.' },
 
     // ---------- Modus: Erwartungshorizont ----------
     bezug: {
       type: 'seg', label: 'Bezug', def: 'Zur oben geplanten Klassenarbeit',
       options: ['Zur oben geplanten Klassenarbeit', 'Aufgaben füge ich unten im Chat ein']
-    },
-    kaUebernehmen: {
-      type: 'action', label: 'Felder der Klassenarbeit übernehmen', action: 'takeKa',
-      showIf: function (s) { return s.bezug === 'Zur oben geplanten Klassenarbeit'; }
     },
     ewhForm: {
       type: 'seg', label: 'Form', def: 'Tabelle', section: 'format', options: ['Tabelle', 'Fließtext-Kriterien'],
@@ -309,16 +324,16 @@ var PB_DATA = (function () {
           : 'Format: Bewertungskriterien als gegliederter Fließtext je Aufgabe, jeweils mit Punkten und Anforderungsbereich.';
       }
     },
+    // Leer = Standardschlüssel vorschlagen lassen (always: Zeile erscheint auch ohne Eingabe).
     notenschluessel: {
-      type: 'seg', label: 'Notenschlüssel', def: 'Standard', options: ['Standard', 'Eigener'], section: 'aufgabe',
+      type: 'text', label: 'Eigener Notenschlüssel', optional: true, def: '', section: 'aufgabe', always: true,
+      placeholder: 'z. B. 1 ab 87 %, 2 ab 73 %, 3 ab 59 %, 4 ab 45 %, 5 ab 20 %',
+      hint: 'Leer lassen, dann schlägt die KI einen üblichen Schlüssel vor.',
       tpl: function (v, s) {
-        if (v === 'Eigener') return s.notenEigen ? 'Verwende diesen Notenschlüssel: ' + s.notenEigen : '';
-        return 'Schlage einen üblichen Notenschlüssel (Prozent und Punkte je Note) vor und kennzeichne ihn als anpassbar an die Vorgaben des Fachbereichs.';
+        return (v || '').trim()
+          ? 'Verwende diesen Notenschlüssel und rechne ihn in Punkte um (Gesamtpunktzahl ' + s.punkte + '): ' + v.trim()
+          : 'Schlage einen üblichen Notenschlüssel vor (Prozent und Punkte je Note bei ' + s.punkte + ' Punkten) und kennzeichne ihn als anpassbar an die Vorgaben des Fachbereichs.';
       }
-    },
-    notenEigen: {
-      type: 'text', label: 'Eigener Notenschlüssel', def: '', placeholder: 'z. B. 1 ab 87 %, 2 ab 73 %, 3 ab 59 %, 4 ab 45 %, 5 ab 20 %',
-      showIf: function (s) { return s.notenschluessel === 'Eigener'; }
     },
     loesungswege: {
       type: 'chips', label: 'Alternative Lösungswege und Teilpunkte', def: ['Alternative Lösungswege anerkennen', 'Teilpunkte vergeben'],
@@ -332,13 +347,10 @@ var PB_DATA = (function () {
         return v.map(function (x) { return m[x] || x; });
       }
     },
-    sprachRichtigkeit: {
-      type: 'seg', label: 'Sprachliche Richtigkeit bewerten', def: 'Nein', options: ['Nein', 'Ja'], section: 'aufgabe',
-      tpl: function (v, s) { return v === 'Ja' ? 'Bewerte die sprachliche Richtigkeit mit einem Anteil von ' + s.sprachAnteil + ' % der Gesamtleistung und beschreibe die Kriterien.' : ''; }
-    },
     sprachAnteil: {
-      type: 'stepper', label: 'Anteil sprachliche Richtigkeit', unit: '%', def: 10, min: 5, max: 50, step: 5, quick: [10, 20],
-      showIf: function (s) { return s.sprachRichtigkeit === 'Ja'; }
+      type: 'stepper', label: 'Sprachliche Richtigkeit (Anteil an der Gesamtleistung)', unit: '%', def: 0, min: 0, max: 50, step: 5, quick: [0, 10, 20],
+      hint: '0 % = nicht gesondert bewerten', section: 'aufgabe',
+      tpl: function (v) { return v > 0 ? 'Bewerte die sprachliche Richtigkeit mit einem Anteil von ' + v + ' % der Gesamtleistung und beschreibe die Kriterien in Stufen (z. B. Rechtschreibung, Grammatik, Ausdruck, Fachsprache).' : ''; }
     },
     zweigErwartungen: {
       type: 'toggle', label: 'Zweig-spezifische Erwartungen', def: true, section: 'aufgabe',
@@ -401,12 +413,17 @@ var PB_DATA = (function () {
   var modes = [
     {
       id: 'einstieg', label: 'Stundeneinstieg', short: 'Einstieg', group: 'Planen',
-      fields: ['einstiegTyp', 'einstiegDauer'], defaults: { format: 'Stichpunkte' },
+      fields: ['einstiegTyp', 'einstiegDauer'],
       uploads: ['stundenplan', 'medien'],
       rolle: 'Du entwickelst motivierende, kognitiv aktivierende Stundeneinstiege.',
       aufgabe: 'Entwickle einen Stundeneinstieg{fachKlammer} zum Thema „{thema}“, der die Lernenden aktiviert, neugierig macht und zu einer Problemfrage führt.',
-      detail: ['Gib die Impulsfragen im Wortlaut an und nenne erwartete Antworten der Lernenden.', 'Schlage zusätzlich zwei kurze Alternativen vor.'],
-      ausgabe: ['Beschreibe den Einstieg Schritt für Schritt mit Zeitangaben und formuliere am Ende die Problemfrage für die Tafel.'],
+      detail: [
+        'Gib die Impulse und Impulsfragen im Wortlaut an und nenne erwartete Antworten der Lernenden, auch mögliche Fehlvorstellungen.',
+        'Beschreibe benötigtes Material (Bild, Gegenstand, Zitat) so konkret, dass ich es selbst beschaffen oder erstellen kann; erfinde keine realen Bildquellen.',
+        'Zeige, wie der Einstieg zur Erarbeitung überleitet.',
+        'Schlage zusätzlich zwei kurze Alternativen vor.'
+      ],
+      ausgabe: ['Beschreibe den Einstieg Schritt für Schritt mit Minutenangaben (Lehrkraft / Lernende) und formuliere am Ende die Problemfrage wörtlich, so wie sie an der Tafel steht.'],
       example: {
         fach: 'Geschichte', jahrgang: '7', thema: 'Die Händlergilden des Fantasiereichs Aurelon',
         zweige: ['Realschule'], lerngruppe: 'Neugierig, arbeitet gern mit Bildern, einige Lernende mit Deutsch als Zweitsprache',
@@ -416,12 +433,16 @@ var PB_DATA = (function () {
     },
     {
       id: 'stunde', label: 'Unterrichtsstunde', short: 'Stunde', group: 'Planen',
-      fields: ['phasen', 'sozialformen', 'stundenMaterial', 'aufgabenAnzahl', 'abFormat'], defaults: { format: 'Tabelle' },
+      fields: ['phasen', 'sozialformen', 'stundenMaterial', 'aufgabenAnzahl', 'abZweige', 'abFormat'],
       uploads: ['stundenplan'],
       rolle: 'Du erstellst durchdachte Verlaufspläne für einzelne Unterrichtsstunden.',
       aufgabe: 'Erstelle einen Verlaufsplan für eine Unterrichtsstunde{fachKlammer} zum Thema „{thema}“.',
-      detail: ['Plane realistische Zeiten und eine Reserve bzw. Kürzungsmöglichkeit ein.', 'Formuliere zentrale Arbeitsaufträge im Wortlaut.'],
-      ausgabe: ['Verlaufsplan mit den Spalten: Phase, Zeit, Unterrichtsgeschehen, Sozialform, Medien und Material, didaktischer Kommentar.'],
+      detail: [
+        'Formuliere ein überprüfbares Stundenziel, falls keines angegeben ist, und richte jede Phase darauf aus.',
+        'Plane realistische Zeiten, die zusammen genau den Zeitrahmen ergeben, und nenne eine Reserve bzw. Kürzungsmöglichkeit.',
+        'Formuliere zentrale Arbeitsaufträge, Impulsfragen und das Ergebnis der Sicherung (z. B. Tafelbild) im Wortlaut.'
+      ],
+      ausgabe: ['Verlaufsplan als Tabelle mit den Spalten: Phase, Zeit, Unterrichtsgeschehen, Sozialform, Medien und Material, didaktischer Kommentar.'],
       example: {
         fach: 'Deutsch', jahrgang: '8', thema: 'Das Märchen vom gläsernen Leuchtturm – eine eigene Fortsetzung schreiben',
         zweige: ['Gymnasium'], dauer: 90, lerngruppe: 'Lebhaft, schreibfreudig, braucht klare Strukturen',
@@ -431,12 +452,17 @@ var PB_DATA = (function () {
     },
     {
       id: 'reihe', label: 'Reihenplanung', short: 'Reihe', group: 'Planen',
-      fields: ['stundenAnzahl', 'leistungsnachweis'], defaults: { format: 'Tabelle' },
+      fields: ['stundenAnzahl', 'leistungsnachweis'],
       uploads: ['uebung'],
       rolle: 'Du planst stimmige Unterrichtsreihen mit klarer Progression.',
       aufgabe: 'Plane eine Unterrichtsreihe{fachKlammer} zum Thema „{thema}“ mit einer klaren Lernprogression von Stunde zu Stunde.',
-      detail: ['Begründe die Abfolge der Stunden kurz didaktisch.', 'Achte auf Wiederholungs- und Übungsphasen vor dem Leistungsnachweis.'],
-      ausgabe: ['Stelle die Reihe als Übersicht dar, eine Zeile pro Stunde: Stunde, Thema, Lernziel, zentrale Methode und Material, Sicherung bzw. Hausaufgabe.'],
+      detail: [
+        'Stelle der Übersicht die übergeordneten Kompetenzen der Reihe voran.',
+        'Gib für jede Stunde ein überprüfbares Lernziel an; jede Stunde baut erkennbar auf der vorherigen auf.',
+        'Begründe die Abfolge der Stunden kurz didaktisch.',
+        'Plane Übungs- und Wiederholungsphasen vor dem Leistungsnachweis ein.'
+      ],
+      ausgabe: ['Stelle die Reihe als Tabelle dar, eine Zeile pro Stunde: Stunde, Thema, Lernziel, zentrale Methode und Material, Sicherung bzw. Hausaufgabe.'],
       example: {
         fach: 'Biologie', jahrgang: '6', thema: 'Lebewesen des erfundenen Moorplaneten Velda – Angepasstheit an Lebensräume',
         zweige: ['Gymnasium'], stundenAnzahl: 6, leistungsnachweis: 'Test', dauer: 45,
@@ -446,26 +472,32 @@ var PB_DATA = (function () {
     },
     {
       id: 'material', label: 'Material', short: 'Material', group: 'Material',
-      fields: ['materialTyp', 'aufgabenAnzahl', 'abFormat', 'visualisierung', 'visualWunsch'], defaults: { format: 'Arbeitsblatt-Layout' },
+      fields: ['materialTyp', 'aufgabenAnzahl', 'abZweige', 'abFormat', 'visualisierung', 'visualWunsch'],
       uploads: ['medien'],
       rolle: 'Du erstellst klar strukturiertes, sofort einsetzbares Unterrichtsmaterial.',
-      aufgabe: 'Erstelle Unterrichtsmaterial{fachKlammer} zum Thema „{thema}“.',
+      aufgabe: function (s, h) {
+        var typ = { Arbeitsblatt: 'ein Arbeitsblatt', Sachtext: 'einen Sachtext', Aufgabenset: 'ein Aufgabenset', Tafelbild: 'ein Tafelbild', Quiz: 'ein Quiz', Lernstationen: 'Lernstationen' }[s.materialTyp] || 'Unterrichtsmaterial';
+        return 'Erstelle ' + typ + h.fachKlammer + ' zum Thema „' + h.thema + '“, das ohne weitere Bearbeitung im Unterricht eingesetzt werden kann.';
+      },
       detail: ['Füge eine Lösung bzw. einen Erwartungshorizont für die Lehrkraft getrennt vom Material an.'],
-      ausgabe: ['Gib das Material so aus, dass es direkt übernommen werden kann: klare Überschrift, nummerierte Aufgaben mit Operatoren, ausreichend Platzhinweise.'],
+      ausgabe: ['Gib das Material so aus, dass es direkt übernommen werden kann: klare Überschrift, nummerierte Aufgaben mit Operatoren, genug Platz für Antworten.'],
       example: {
         fach: 'Mathematik', jahrgang: '7', thema: 'Prozentrechnung am Marktstand des Zauberdorfs Kerbelstein',
         zweige: ['Realschule', 'Hauptschule'], materialTyp: 'Arbeitsblatt',
-        diff: 'Ja', diffArt: ['Drei Niveaustufen', 'Sprachsensibel'], diffZweige: ['Realschule', 'Hauptschule'],
+        diffArt: ['Drei Niveaustufen', 'Sprachsensibel'], diffZweige: ['Realschule', 'Hauptschule'],
         kritisch: ['Fehlersuche'], afb: 2
       }
     },
     {
       id: 'slides', label: 'Slides', short: 'Slides', group: 'Material',
-      fields: ['folienAnzahl', 'slideStil', 'visualisierung', 'visualWunsch'], defaults: { format: 'Folienliste' },
+      fields: ['folienAnzahl', 'slideStil', 'visualisierung', 'visualWunsch'],
       uploads: ['folien', 'medien'],
       rolle: 'Du gestaltest klare, gut lesbare Präsentationen für den Unterricht.',
-      aufgabe: 'Erstelle die Struktur einer Präsentation{fachKlammer} zum Thema „{thema}“.',
-      detail: ['Achte auf eine Idee pro Folie und gut lesbare, kurze Stichpunkte.'],
+      aufgabe: 'Erstelle eine Präsentation{fachKlammer} zum Thema „{thema}“ mit vollständig ausformulierten Folieninhalten.',
+      detail: [
+        'Eine Idee pro Folie, höchstens etwa 30 Wörter Folientext; Details gehören in die Sprechernotizen.',
+        'Plane eine Titelfolie, eine Folie mit Leitfrage oder Ablauf und eine Abschlussfolie mit Zusammenfassung oder Aufgabe.'
+      ],
       ausgabe: ['Gib für jede Folie aus: Folientitel, 3–5 Stichpunkte und Sprechernotizen (2–4 Sätze). Ergänze bei Bedarf einen Bildvorschlag ohne erfundene Quellenangaben.'],
       example: {
         fach: 'Erdkunde', jahrgang: '9', thema: 'Die Klimazonen der Fantasie-Insel Tamaru',
@@ -475,12 +507,17 @@ var PB_DATA = (function () {
     },
     {
       id: 'klassenarbeit', label: 'Klassenarbeit', short: 'Klassenarbeit', group: 'Prüfen',
-      fields: ['kaArt', 'bearbeitungszeit', 'punkte', 'afbVert', 'aufgabenformate', 'operatoren', 'hilfsmittel', 'zweigFassungen', 'lesbarkeit', 'visualisierung', 'visualWunsch', 'ewhButton'],
-      defaults: { format: 'Arbeitsblatt-Layout' }, pruefen: true,
+      fields: ['kaArt', 'bearbeitungszeit', 'punkte', 'afbVert', 'aufgabenformate', 'hilfsmittel', 'zweigFassungen', 'lesbarkeit', 'visualisierung', 'visualWunsch', 'ewhButton'],
+      pruefen: true,
       uploads: ['alteKa', 'kaRegeln', 'notenschluessel', 'operatoren', 'uebung'],
       rolle: 'Du konzipierst faire, valide Leistungsüberprüfungen mit passenden Operatoren.',
       aufgabe: function (s, h) { return 'Erstelle ' + (s.kaArt === 'Test' ? 'einen ' : 'eine ') + (s.kaArt || 'Klassenarbeit') + h.fachKlammer + ' zum Thema „' + h.thema + '“.'; },
-      detail: ['Steigere die Schwierigkeit innerhalb der Arbeit und vermeide Aufgaben, die nur bei Vorwissen außerhalb des Unterrichts lösbar sind.'],
+      detail: [
+        'Formuliere alle Aufgaben mit den Operatoren des Fachs (gemäß der Operatorenliste des Landes) und ordne jeder Aufgabe einen Anforderungsbereich zu.',
+        'Steigere die Schwierigkeit innerhalb der Arbeit und vermeide Aufgaben, die nur mit Vorwissen außerhalb des Unterrichts lösbar sind.',
+        'Liefere alle Materialien (Texte, Tabellen, Abbildungsbeschreibungen) vollständig mit, damit die Arbeit ohne weitere Unterlagen bearbeitet werden kann.',
+        'Jede Aufgabe muss ohne Rückfrage verständlich sein; Teilaufgaben werden mit a), b), c) gekennzeichnet und einzeln bepunktet.'
+      ],
       ausgabe: ['Gliedere: Kopf (Bearbeitungszeit, Hilfsmittel, Gesamtpunkte), Aufgaben mit Operator und Punkten, Punkteübersicht. Gib die Zuordnung zu den Anforderungsbereichen in einer separaten Übersicht für die Lehrkraft an.'],
       example: {
         fach: 'Politik-Wirtschaft', jahrgang: '9', thema: 'Wahlen und Mitbestimmung im Inselstaat Nordhavn',
@@ -491,7 +528,7 @@ var PB_DATA = (function () {
     },
     {
       id: 'ewh', label: 'Erwartungshorizont', short: 'Erwartungshorizont', group: 'Prüfen',
-      fields: ['bezug', 'kaUebernehmen', 'ewhForm', 'punkte', 'afbVert', 'notenschluessel', 'notenEigen', 'loesungswege', 'sprachRichtigkeit', 'sprachAnteil', 'zweigErwartungen'],
+      fields: ['bezug', 'ewhForm', 'punkte', 'afbVert', 'notenschluessel', 'loesungswege', 'sprachAnteil', 'zweigErwartungen'],
       pruefen: true, uploads: ['fertigeKa', 'raster', 'notenschluessel', 'operatoren'],
       rolle: 'Du erstellst transparente, faire Erwartungshorizonte und Bewertungsraster.',
       aufgabe: function (s, h) {
@@ -504,18 +541,18 @@ var PB_DATA = (function () {
       example: {
         fach: 'Politik-Wirtschaft', jahrgang: '9', thema: 'Wahlen und Mitbestimmung im Inselstaat Nordhavn',
         zweige: ['Hauptschule', 'Realschule', 'Gymnasium'], punkte: 50, afbVert: { I: 30, II: 45, III: 25 },
-        bezug: 'Zur oben geplanten Klassenarbeit', ewhForm: 'Tabelle', sprachRichtigkeit: 'Ja', sprachAnteil: 10
+        bezug: 'Zur oben geplanten Klassenarbeit', ewhForm: 'Tabelle', sprachAnteil: 10
       }
     }
   ];
 
   var cards = [
-    { id: 'grund', title: 'Grundlagen', icon: 'book', fields: ['fach', 'fachAnders', 'jahrgang', 'thema', 'bundesland', 'kc', 'zweige'] },
+    { id: 'grund', title: 'Grundlagen', icon: 'book', fields: ['fach', 'fachAnders', 'jahrgang', 'thema', 'bundesland', 'zweige', 'recherche', 'rechercheZeitraum'] },
     { id: 'modus', title: null, fields: null },
     { id: 'gruppe', title: 'Lerngruppe und Ziele', icon: 'people', fields: ['dauer', 'lerngruppe', 'lernziel', 'vorwissen'] },
-    { id: 'diff', title: 'Differenzierung', icon: 'layers', fields: ['diff', 'diffArt', 'diffZweige'] },
+    { id: 'diff', title: 'Differenzierung', icon: 'layers', fields: ['diffArt', 'diffZweige'] },
     { id: 'methodik', title: 'Methodik und Einsatz', icon: 'wand', fields: ['einsatz', 'geraet', 'tool', 'ipadDigitalSchreiben', 'interaktiv', 'kritisch', 'afb'] },
-    { id: 'ausgabe', title: 'Ausgabe', icon: 'sliders', fields: ['format', 'laenge', 'sprache', 'promptStil'] }
+    { id: 'ausgabe', title: 'Ausgabe', icon: 'sliders', fields: ['laenge', 'sprache'] }
   ];
 
   var texte = {
@@ -523,15 +560,20 @@ var PB_DATA = (function () {
     rolleDetail: 'Du arbeitest praxisnah, schülerorientiert und achtest auf fachliche Korrektheit und ein dem Jahrgang angemessenes Niveau.',
     uploadsSatz: 'Ich lade zusätzlich hoch bzw. füge ein: {v}. Frage diese Unterlagen nicht erneut ab, sondern nutze sie.',
     qualitaet: [
-      'Erfinde keine Quellen oder Fakten.',
-      'Kennzeichne Unsicheres mit [unsicher].',
-      'Ergänze am Ende eine kurze Liste „Das solltest du prüfen“.'
+      'Erfinde keine Quellen, Zitate, Zahlen oder Fakten. Kennzeichne Unsicheres mit [unsicher].',
+      'Fehlt eine Kleinigkeit, die keine Rückfrage wert ist, triff eine sinnvolle Annahme und nenne sie kurz zu Beginn des Ergebnisses.',
+      'Verwende fachlich korrekte Begriffe und eine dem Jahrgang angemessene Sprache.',
+      'Ergänze nach dem Ergebnis eine kurze Liste „Das solltest du prüfen“.'
     ],
-    qualitaetDetail: ['Verwende fachlich korrekte Begriffe und eine dem Jahrgang angemessene Sprache.'],
     rueckfragen: 'Kläre Unklarheiten immer zuerst: Prüfe vor dem Erstellen, ob Angaben fehlen, widersprüchlich oder mehrdeutig sind. Wenn ja, stelle gebündelt höchstens drei Rückfragen und warte auf meine Antworten, bevor du das Ergebnis erstellst.',
     pruefenRegel: 'Prüfe Aufgaben, Punktsummen und Zuordnung der Anforderungsbereiche selbst auf Stimmigkeit, bevor du antwortest.',
+    // Steht in jedem Prompt (Wortlaut der Lehrkraft); die zweite Zeile legt fest, was am Ende ausgegeben wird.
+    kritik: [
+      'Du bist ein harter Kritiker. Deine Aufgabe ist es, deine Antwort zu kritisieren. Erkläre mir, warum sie schlecht ist. Lies es in Ruhe durch und durchdenke deine Antwort Schritt für Schritt, bevor du etwas erstellst. Nutze anschließend diese Kritik und liefere ein optimiertes Ergebnis.',
+      'Ablauf: Kläre zuerst offene Fragen (siehe Qualitätsregeln). Erstelle dann einen Entwurf, gib deine Kritik daran als knappe, konkrete Liste mit höchstens fünf Punkten aus (was ist fachlich, didaktisch oder sprachlich schwach, was fehlt) und liefere danach das vollständige optimierte Ergebnis. Gib den Entwurf selbst nicht aus. Erzeugst du eine Datei, enthält sie nur das optimierte Ergebnis.'
+    ],
     optimierung: [
-      'Gib ganz am Ende einen eigenen Abschnitt mit der Überschrift „Für ein noch besseres Ergebnis“ aus. Darin:',
+      'Gib ganz am Ende, nach dem optimierten Ergebnis, einen eigenen Abschnitt mit der Überschrift „Für ein noch besseres Ergebnis“ aus. Darin:',
       '1. Nenne, welche Informationen oder Unterlagen noch fehlen, um das Ergebnis zu verbessern.',
       '2. Teile sie in „wichtig“ und „optional“ ein und begründe jeden Punkt in einem Satz.',
       '3. Sage konkret, was ich hochladen oder einfügen kann, zum Beispiel: {beispiele}.',
@@ -574,21 +616,36 @@ var PB_DATA = (function () {
       var lernziel = (s.lernziel || '').trim()
         ? '„' + s.lernziel.trim() + '“'
         : 'einem klar formulierten, überprüfbaren Lernziel, das du passend zum Thema festlegst';
-      // Kombination: Aussehen nach dem Designsheet der Schule (arbeitsblatt.css), Didaktik aus der Aufgabenblatt-Vorlage.
+      var icons = iconsErlaubt(s);
+      var zweige = (s.zweige || []).length > 1;
+      var jeZweig = zweige && s.abZweige === 'Je Zweig ein eigenes Blatt';
+      var niveau = (s.diffArt || []).indexOf('Drei Niveaustufen') !== -1;
+      // Kombination: Aussehen nach dem Designsheet der Schule, Didaktik aus der Aufgabenblatt-Vorlage.
       return [
-        'Erstelle ein vollständiges, druckfähiges Aufgabenblatt für ' + (h.fach || 'das Fach') + ', ' + stufe + ', zum Thema „' + h.thema + '“, mit dem Lernziel ' + lernziel + ' und ' + s.aufgabenAnzahl + ' Aufgaben. Gestalte es nach dem Designsheet der Schule (Regeln unten): klar, ruhig, strukturiert und altersgerecht; jeder Arbeitsschritt ist sofort verständlich; Material, Auftrag und Antwortbereich sind sichtbar getrennt. Jedes Blatt füllt genau eine A4-Seite und enthält höchstens vier Aufgaben, einen Merkkasten, ein bis zwei Tippkästen und zwei Illustrationen. Das Arbeitsblatt darf mehrere Blätter umfassen; jedes weitere Blatt bekommt einen eigenen Kopf. Lass keinen Baustein über einen Seitenumbruch laufen und lege lieber ein Blatt mehr an, als Antwortflächen zu verkleinern oder Inhalte abzuschneiden. Erstelle außerdem eine separate Lösungsübersicht, nicht auf dem Schülerblatt.',
+        'Erstelle ein vollständiges, druckfähiges Aufgabenblatt für ' + (h.fach || 'das Fach') + ', ' + stufe + ', zum Thema „' + h.thema + '“, mit dem Lernziel ' + lernziel + ' und ' + s.aufgabenAnzahl + ' Aufgaben ' + (jeZweig ? '(je Zweig)' : '(insgesamt' + (niveau || zweige ? ', über alle ' + [niveau ? 'Niveaustufen' : '', zweige ? 'Zweige' : ''].filter(Boolean).join(' und ') + ' hinweg' : '') + ')') + '. Gestalte es nach dem Designsheet der Schule (Regeln unten): klar, ruhig, strukturiert und altersgerecht; jeder Arbeitsschritt ist sofort verständlich; Material, Auftrag und Antwortbereich sind sichtbar getrennt. Jedes Blatt ist genau eine A4-Seite und enthält höchstens vier Aufgaben (höchstens drei, wenn ein Merkkasten darauf steht), höchstens einen Merkkasten, höchstens zwei Tippkästen' + (icons ? ' und höchstens zwei Illustrationen' : '') + '; kein Baustein ist Pflicht. Das Arbeitsblatt darf mehrere Blätter umfassen; jedes weitere Blatt bekommt einen eigenen Kopf. Lass keinen Baustein über einen Seitenumbruch laufen und lege lieber ein Blatt mehr an, als Antwortflächen zu verkleinern oder Inhalte abzuschneiden. Erstelle außerdem eine separate Lösungsübersicht, nicht auf dem Schülerblatt; sie nennt je Aufgabe die Lösung, den Anforderungsbereich' + (niveau ? ', die Niveaustufe' : '') + (zweige && !jeZweig ? ' und für welchen Zweig sie Pflicht oder Wahl ist' : '') + '.',
         'Farben: Petrol #06344A für Text, Überschriften und Rahmen der Aufgabenbox; Petrol ruhig #3D5F70 für Beschriftungen und Trennlinien; #9DB0B8 nur für Schreiblinien. Akzentfarben nur für Formen, Rahmen, Ziffern und Icons, nie für Fließtext: Gelb #F5A742 (Rahmen des Merkkastens, Unterstreichung der Blattüberschrift, Icons), Orange #FF7F0A sehr sparsam, Salbei #719C7B, Salbei dunkel #4E7A5A (Rahmen und Titel des Tippkastens), Rost #B8512A (Aufgabenziffern). Hintergrund immer Weiß; Flächen nur in den hellen Tönungen Gelb hell #FDF0DA (Merkkasten), Salbei hell #E3EEE5 (Tippkasten) und Pfirsich hell #FDEEE2 (z. B. Tabellenkopf), keine Vollflächen. Keine Fach- oder Jahrgangsfarben. Textkontrast mindestens 4,5:1. Farbe darf Bedeutung niemals allein vermitteln: ergänze Beschriftungen, Rahmenarten, Formen oder Icons.',
-        'Typografie: Patrick Hand (nur eine Stärke, keine Fettung) für Blattüberschrift 30 pt, Zwischenüberschriften 18 pt und Kastentitel 16 pt. Zahlen nie in Handschrift: Aufgabenziffern in Verdana Bold, etwa 17 pt, in Rost #B8512A, zentriert in einem Kreis von etwa 9 mm mit Gelb hell und dünnem gelbem Rand. Verdana für Fließtext, Arbeitsaufträge, Tabellen und alle Zahlen, 11 pt (nie kleiner), Zeilenabstand 1,4; die Null wird als normale 0 geschrieben, ohne Schrägstrich oder Punkt, verwende also keine Schrift mit durchgestrichener oder gepunkteter Null; zwischen Zahl und Einheit oder Prozentzeichen steht ein geschütztes Leerzeichen, damit „10 %“ nicht getrennt wird; Bold nur für Operatoren, Italic für Zitate; Feldnamen im Kopf (Jahrgang, Fach, Datum) 9 pt in Versalien. Überschriften niemals mit einer Wellenlinie unterstreichen: Die Blattüberschrift bekommt höchstens eine gerade gelbe Linie, Zwischen- und Kastenüberschriften gar keine Unterstreichung. Die Blattüberschrift hat höchstens eine Zeile (etwa 35 Zeichen). Beginne jeden Auftrag mit einem eindeutigen, fett gesetzten Operator (z. B. Vergleiche, Berechne, Begründe); verwende altersgerechte, kurze Sätze. Maximal drei sichtbare Schriftebenen pro Blatt; linksbündig setzen, sparsame Silbentrennung, kein durchgängiger Versalsatz außer bei den Feldnamen.',
-        'Seitenaufbau: DIN A4 hoch, Seitenränder 12 mm (Nutzfläche 186 × 273 mm); nichts ragt in den Rand. Oben auf jedem Blatt der Kopf: Jahrgang, Fach, Datum als leere Linie zum Ausfüllen und die Blattüberschrift, darunter eine gepunktete Linie in Petrol ruhig. Danach kurzer Kontext, Merkkasten, nummerierte Aufgabenboxen mit zugehöriger Hilfe und ausreichend Antwortfläche. Standardmäßig eine Lesespalte; zwei Spalten nur für kurze unabhängige Aufgaben oder direkt vergleichbare Materialien. Abstände im Raster 1,5 mm (Titel zu Text), 3 mm (Auftrag zu Linien), 4,5 mm (zwischen Bausteinen), 6 mm (Innenabstand seitlich), 9 mm (großer Abstand, gleich der Zeilenhöhe). Eine gepunktete Trennlinie nur zwischen Themenblöcken, nicht zwischen jeder Aufgabe. Fließtext pro Blatt: Jahrgang 5–6 höchstens etwa 150 Wörter, Jahrgang 7–10 etwa 250, Oberstufe etwa 350. Mindestens ein Drittel des Blatts bleibt Schreibfläche oder Weißraum. Bei mehreren Blättern steht unten die Seitenzahl, bei Material aus fremden Quellen eine kurze Quellenangabe.',
-        'Bausteine: Merkkasten („Merke“, „Info“, „Regel“ oder „Definition“): Gelb hell mit durchgezogenem gelbem Rahmen, abgerundeten Ecken und i-Icon, 2–4 Sätze, höchstens einer pro Blatt. Aufgabenbox: weiße Box mit durchgezogenem Petrol-Rahmen und abgerundeten Ecken, Ziffer wie unter Typografie beschrieben; ein Arbeitsauftrag pro Box, höchstens zwei Sätze, durchgehend nummeriert, nicht verschachtelt. Jede Box folgt der Reihenfolge Ziffer + fett gesetzter Operator + konkreter Materialbezug + erwartetes Ergebnis + passende Antwortfläche; Sozialform und Zeit stehen, falls nötig, stets an derselben Stelle. Tipp- oder Hilfekasten: Salbei hell mit gestricheltem Rahmen in Salbei dunkel und Glühbirnen-Icon, 1–3 Sätze, direkt unter der Aufgabe, zu der er gehört. „Weiterdenken“ als Variante „Zusatzaufgabe“ mit Stern-Icon am Ende des Blatts, ohne die Kernaufgaben zu unterbrechen.',
-        'Antwortflächen: Plane sie nach Aufwand. Schreiblinien im Abstand von 9 mm: eine Linie für einen Begriff, drei bis fünf für eine Begründung; freie oder karierte Fläche für Skizzen und Rechenwege, Ergebnisfelder bei Rechnungen separat; Lücken als Linie von etwa 30 mm (länger für längere Antworten). Die letzte Aufgabe eines Blatts darf den restlichen Platz mit Schreiblinien füllen. Tabellen erhalten klare Spaltenüberschriften (Kopfzeile ggf. Pfirsich hell), ausreichend Zellraum, dezente Linien und Einheiten; Diagramme gut lesbare Achsen, Skalen, Legenden und Einheiten sowie Beschriftungen, die auch in Graustufen funktionieren.',
-        'Bildsprache: Höchstens zwei Illustrationen pro Blatt, nur im Flat-Stil in Gelb und Schwarz, rein dekorativ (alt="") und etwa 30 mm breit neben einem Kasten oder der Überschrift; keine Fotos, keine fremden Clipart-Grafiken. Fachliche Abbildungen und Diagramme sind reduziert, mit klaren Konturen, erklären Prozesse durch Pfeile und Beschriftungen und enthalten keine KI-typischen Fantasiedetails. Icons nur zur Kennzeichnung einer Arbeitsweise, immer mit Textlabel, als einheitliches lineares Set.',
-        'Abschlussprüfung: Prüfe fachliche Korrektheit, Zahlen, Einheiten, Quellen, eindeutige Operatoren, angemessene Antwortflächen, Farben laut Designsheet, Nummerierung und Textlabels. Das Blatt muss barrierearm und drucktauglich sein: gut lesbare Schrift und Linien, ausreichend Kontrast, kein Beschnitt wichtiger Inhalte, keine Vollflächen und auch als Schwarzweißdruck verständlich, weil Merk-, Aufgaben- und Tippkasten sich durch Rahmenart (durchgezogen, dunkel, gestrichelt) und Icon unterscheiden. Vermeide überladene Seiten, dekorative Elemente ohne Lernfunktion, winzige Schrift, Text auf unruhigen Bildern, reine Farbcodierung, uneinheitliche Icons und zu wenig Platz für Antworten.',
+        'Typografie: Patrick Hand (nur eine Stärke, keine Fettung) für Blattüberschrift 30 pt, Zwischenüberschriften 18 pt und Kastentitel 16 pt. Ist Patrick Hand nicht verfügbar, nimm eine sachliche Ersatzschrift (Verdana bzw. Segoe UI), niemals Comic Sans oder eine andere verspielte Schrift. Zahlen nie in Handschrift: Aufgabenziffern in Verdana Bold, etwa 17 pt, in Rost #B8512A, zentriert in einem Kreis von etwa 9 mm mit Gelb hell und dünnem gelbem Rand. Verdana für Fließtext, Arbeitsaufträge, Tabellen und alle Zahlen, 11 pt (nie kleiner), Zeilenabstand 1,4; die Null wird als normale 0 geschrieben, ohne Schrägstrich oder Punkt, verwende also keine Schrift mit durchgestrichener oder gepunkteter Null; zwischen Zahl und Einheit oder Prozentzeichen steht ein geschütztes Leerzeichen, damit „10 %“ nicht getrennt wird; Bold nur für Operatoren, Italic für Zitate; Feldnamen im Kopf (Jahrgang, Fach, Name, Datum) 9 pt in Versalien. Überschriften niemals mit einer Wellenlinie unterstreichen: Die Blattüberschrift bekommt höchstens eine gerade gelbe Linie, Zwischen- und Kastenüberschriften gar keine Unterstreichung. Die Blattüberschrift hat höchstens eine Zeile (etwa 35 Zeichen). Beginne jeden Auftrag mit einem eindeutigen, fett gesetzten Operator (z. B. Vergleiche, Berechne, Begründe); verwende altersgerechte, kurze Sätze. Maximal drei sichtbare Schriftebenen pro Blatt; linksbündig setzen, sparsame Silbentrennung, kein durchgängiger Versalsatz außer bei den Feldnamen.',
+        'Seitenaufbau: DIN A4 hoch, Seitenränder 12 mm (Nutzfläche 186 × 273 mm); nichts ragt in den Rand. Oben auf jedem Blatt der Kopf: links Jahrgang und Fach, rechts oben Name und daneben Datum, beide als leere Linie zum Ausfüllen (Name etwa 60 mm, Datum etwa 30 mm lang); darunter die Blattüberschrift und eine gepunktete Linie in Petrol ruhig. Danach kurzer Kontext, Merkkasten, nummerierte Aufgabenboxen mit zugehöriger Hilfe und ausreichend Antwortfläche. Standardmäßig eine Lesespalte; zwei Spalten nur für kurze unabhängige Aufgaben oder direkt vergleichbare Materialien. Abstände im Raster 1,5 mm (Titel zu Text), 3 mm (Auftrag zu Linien), 4,5 mm (zwischen Bausteinen), 6 mm (Innenabstand seitlich), 9 mm (großer Abstand, gleich der Zeilenhöhe). Eine gepunktete Trennlinie nur zwischen Themenblöcken, nicht zwischen jeder Aufgabe. Fließtext pro Blatt: Jahrgang 5–6 höchstens etwa 150 Wörter, Jahrgang 7–10 höchstens etwa 250, Oberstufe höchstens etwa 350. Mindestens ein Drittel des Blatts bleibt Schreibfläche oder Weißraum. Bei mehreren Blättern steht unten die Seitenzahl, bei Material aus fremden Quellen eine kurze Quellenangabe.',
+        'Platzbudget: Du kannst die Seite nicht nachmessen, also rechne vorher. Plane jedes Blatt mit diesen Richtwerten und addiere die Höhen: Kopf mit Titel etwa 35 mm, Kontext etwa 6 mm je Textzeile, Merkkasten etwa 25 mm, Wortspeicher etwa 18 mm, Tippkasten etwa 18 mm, Aufgabenbox etwa 12 mm plus Antwortfläche (9 mm je Schreiblinie, 9 mm je Tabellenzeile einschließlich Kopfzeile, Rechenkästchen nach Bedarf), dazu 4,5 mm Abstand je Baustein und 6 mm für die Seitenzahl. Liegt die Summe über 273 mm, verschiebe die letzte Aufgabe samt Tipp auf ein neues Blatt. Nenne die Summe je Blatt kurz in deiner Abschlussprüfung.',
+        niveau ? 'Niveaustufen: Kennzeichne jede Aufgabe mit ● (grundlegend), ●● (mittel) oder ●●● (erweitert) in Petrol ruhig, 11 pt, direkt unter der Aufgabenziffer. Erkläre die Symbole einmal in einer einzeiligen Legende unter dem Kopf von Blatt 1. Verwende keine Wörter wie „leicht“ oder „schwer“.' : '',
+        zweige ? (jeZweig
+          ? 'Zweige: Erstelle für jeden Zweig (' + list(s.zweige) + ') ein eigenes, vollständiges Arbeitsblatt mit gleichem Thema und vergleichbarer Struktur, aber angepasstem Anspruch, Hilfen und Umfang. Nenne den Zweig im Kopf als Feld „Zweig“ neben dem Fach. Die Lösungsübersicht ist nach Zweigen gegliedert.'
+          : 'Zweige: Alle Zweige (' + list(s.zweige) + ') arbeiten mit einem gemeinsamen Blatt. Kennzeichne bei jeder Aufgabe in einer eigenen kurzen Zeile über dem Arbeitsauftrag, für welchen Zweig sie Pflicht oder Wahl ist (z. B. „Pflicht: alle“ oder „Wahl: ' + s.zweige[0] + '“), als kleines Etikett wie die Feldnamen im Kopf (9 pt, Versalien, Petrol ruhig).') : '',
+        'Bausteine: Merkkasten („Merke“, „Info“, „Regel“ oder „Definition“): Gelb hell mit durchgezogenem gelbem Rahmen, abgerundeten Ecken und Info-Symbol, 2–4 Sätze, höchstens einer pro Blatt. Aufgabenbox: weiße Box mit durchgezogenem Petrol-Rahmen und abgerundeten Ecken, Ziffer wie unter Typografie beschrieben; ein Arbeitsauftrag pro Box, höchstens zwei Sätze, durchgehend nummeriert, nicht verschachtelt. Jede Box folgt der Reihenfolge Ziffer + fett gesetzter Operator + konkreter Materialbezug + erwartetes Ergebnis + passende Antwortfläche; Sozialform und Zeit stehen, falls nötig, stets an derselben Stelle. Tipp- oder Hilfekasten: Salbei hell mit gestricheltem Rahmen in Salbei dunkel und Tipp-Symbol, 1–3 Sätze, direkt unter der Aufgabe, zu der er gehört. Wortspeicher (bei sprachsensibler Gestaltung): weißer Kasten mit 1 mm breitem linkem Rand in Petrol ruhig und dem Titel „Wortspeicher“ wie ein Kastentitel; Nomen immer mit Artikel, dazu passende Satzanfänge; er steht unter dem Merkkasten oder direkt vor der Aufgabe, für die er gebraucht wird. „Weiterdenken“ als Variante „Zusatzaufgabe“ mit Stern-Symbol am Ende des Blatts, ohne die Kernaufgaben zu unterbrechen.',
+        'Antwortflächen: Plane sie nach Aufwand und nur so groß, wie die Antwort braucht. Schreiblinien im Abstand von 9 mm: eine Linie für einen Begriff, drei bis fünf für eine Begründung, höchstens etwa acht pro Aufgabe; Rechenkästchen im 5-mm-Karo für Skizzen und Rechenwege, Ergebnisfelder bei Rechnungen separat; Lücken als Linie von etwa 30 mm (länger für längere Antworten). Übriger Platz am Blattende bleibt Weißraum oder nimmt die Zusatzaufgabe auf. Tabellen erhalten klare Spaltenüberschriften (Kopfzeile ggf. Pfirsich hell), ausreichend Zellraum, dezente Linien und Einheiten; Diagramme gut lesbare Achsen, Skalen, Legenden und Einheiten sowie Beschriftungen, die auch in Graustufen funktionieren.',
+        icons
+          ? 'Bildsprache: Höchstens zwei Illustrationen pro Blatt, nur im Flat-Stil in Gelb und Schwarz, rein dekorativ (alt="") und etwa 30 mm breit neben einem Kasten oder der Überschrift; keine Fotos, keine fremden Clipart-Grafiken. Fachliche Abbildungen und Diagramme sind reduziert, mit klaren Konturen, erklären Prozesse durch Pfeile und Beschriftungen und enthalten keine KI-typischen Fantasiedetails. Icons nur zur Kennzeichnung einer Arbeitsweise, immer mit Textlabel, als einheitliches lineares Set.'
+          : 'Bildsprache: Zeichne keine eigenen Icons und keine dekorativen Illustrationen. Verwende nur Symbole, die Word selbst erzeugen kann: Zeichen aus Einfügen → Symbol (z. B. ℹ ★ ✓ ✎ ☞ ➜ in der Schrift „Segoe UI Symbol“), einfache Formen (Kreis, Rechteck, Pfeil) oder Piktogramme aus Einfügen → Piktogramme. In einer HTML-Datei nur die genannten Unicode-Zeichen und einfache Formen, keine selbst gezeichneten SVG-Bilder. Symbole sind einfarbig (Petrol oder Gelb) und stehen immer mit Textlabel. Fachliche Diagramme und Tabellen sind erlaubt, wenn die Aufgabe sie braucht; sie sind reduziert und klar beschriftet. Wo sonst eine Illustration stünde, bleibt Weißraum.',
+        'Abschlussprüfung: Prüfe fachliche Korrektheit, Zahlen, Einheiten, Quellen, eindeutige Operatoren, angemessene Antwortflächen, das Platzbudget je Blatt, Farben laut Designsheet, Nummerierung und Textlabels. Das Blatt muss barrierearm und drucktauglich sein: gut lesbare Schrift und Linien, ausreichend Kontrast, kein Beschnitt wichtiger Inhalte, keine Vollflächen und auch als Schwarzweißdruck verständlich, weil Merk-, Aufgaben- und Tippkasten sich durch Rahmenart (durchgezogen, dunkel, gestrichelt) und Symbol unterscheiden. Vermeide überladene Seiten, dekorative Elemente ohne Lernfunktion, winzige Schrift, Text auf unruhigen Bildern, reine Farbcodierung, uneinheitliche Symbole und zu wenig Platz für Antworten.',
         vorrang(s),
         abAusgabe[s.abFormat] || abAusgabe['Druckfertige HTML-Datei']
       ];
     }
   };
+  // Nur mit der Auswahl „Icons / Piktogramme“ darf die KI eigene Icons und Illustrationen zeichnen.
+  function iconsErlaubt(s) {
+    return ['material', 'slides', 'klassenarbeit'].indexOf(s.mode) !== -1 && (s.visualisierung || []).indexOf('Icons / Piktogramme') !== -1;
+  }
   // Was die Lehrkraft unter „Visualisierung“ selbst angibt, gilt vor dem Designsheet.
   function vorrang(s) {
     var hat = s.mode === 'material' && ((s.visualisierung || []).length || (s.visualWunsch || '').trim());
@@ -596,8 +653,8 @@ var PB_DATA = (function () {
   }
   // Ohne Datei gehen Schriften, Farben und A4-Aufbau verloren – deshalb wird das Ausgabeformat ausdrücklich genannt.
   var abAusgabe = {
-    'Druckfertige HTML-Datei': 'Ausgabe: Gib das Arbeitsblatt als eine vollständige, druckfertige HTML-Datei aus: @page { size: A4 portrait; margin: 12mm; }, jedes Blatt als eigenes <main class="ab-blatt"> mit festem Seitenumbruch. Verwende die Klassennamen des Designsheets (ab-kopf, ab-kopf__meta, ab-kopf__feld, ab-kopf__label, ab-kopf__datum, ab-kopf__linie, ab-kopf__titel, ab-h2, ab-info, ab-kasten__titel, ab-aufgabe, ab-aufgabe__nr, ab-aufgabe__inhalt, ab-auftrag, ab-linien mit style="--zeilen: 4", ab-lueckentext, ab-luecke mit style="--breite: 40mm", ab-tipp, ab-tipp--zusatz, ab-trenner, ab-fuellen, ab-zwei-spalten), binde <link rel="stylesheet" href="arbeitsblatt.css"> ein und schreibe zusätzlich alle nötigen Regeln in ein <style>-Element, damit die Datei auch allein funktioniert; setze dort --font-text auf Verdana und überschreibe .ab-aufgabe__nr gemäß der Typografie-Regel für Aufgabenziffern. Schriften mit Ersatzschriften angeben („Patrick Hand“, „Comic Sans MS“, cursive bzw. Verdana, „Segoe UI“, Tahoma, sans-serif). Die Lösungsübersicht steht auf einem eigenen Blatt am Ende. Weise darauf hin, dass beim Drucken „Hintergrundgrafiken“ aktiviert sein muss. Kannst du keine Dateien erzeugen, gib den vollständigen HTML-Code in einem einzigen Codeblock aus.',
-    'Word-Datei (DOCX)': 'Ausgabe: Erstelle das Arbeitsblatt als Word-Datei (DOCX) im Format DIN A4 mit 12 mm Rand und den genannten Schriften, Farben und Abständen als Formatvorlagen (Kästen als Tabellenzellen mit Rahmen und heller Tönung); die Lösungsübersicht beginnt auf einer neuen Seite. Kannst du keine Dateien erzeugen, sage das zu Beginn und gib stattdessen eine druckfertige HTML-Datei in einem Codeblock aus.',
+    'Druckfertige HTML-Datei': 'Ausgabe: Gib das Arbeitsblatt als eine einzige, eigenständige, druckfertige HTML-Datei aus, die keine externen Dateien, Schriften oder Bilder lädt; schreibe alle Regeln in ein <style>-Element. @page { size: A4 portrait; margin: 12mm; }, jedes Blatt als eigenes <main class="ab-blatt"> mit page-break-after: always. Gib den Blättern keine feste Höhe mit overflow: hidden, damit zu langer Inhalt sichtbar auf die nächste Seite rutscht statt still abgeschnitten zu werden. Verwende sprechende Klassennamen (z. B. ab-kopf, ab-info, ab-aufgabe, ab-aufgabe__nr, ab-auftrag, ab-linien, ab-luecke, ab-tipp, ab-wortspeicher). Schriften mit sachlichen Ersatzschriften angeben: „Patrick Hand“, Verdana, „Segoe UI“, sans-serif für Überschriften und Verdana, „Segoe UI“, Tahoma, sans-serif für Text. Die Lösungsübersicht steht auf einem eigenen Blatt am Ende. Weise darauf hin, dass beim Drucken „Hintergrundgrafiken“ aktiviert sein muss. Kannst du keine Dateien erzeugen, gib den vollständigen HTML-Code in einem einzigen Codeblock aus.',
+    'Word-Datei (DOCX)': 'Ausgabe: Erstelle das Arbeitsblatt als Word-Datei (DOCX) im Format DIN A4 mit 12 mm Rand und den genannten Schriften, Farben und Abständen als Formatvorlagen (Kästen als Tabellenzellen mit Rahmen und heller Tönung, Überschriften in Patrick Hand mit Verdana als Ersatz); die Lösungsübersicht beginnt auf einer neuen Seite. Kannst du keine Dateien erzeugen, sage das zu Beginn und gib stattdessen eine druckfertige HTML-Datei in einem Codeblock aus.',
     'Nur Text': 'Ausgabe: Gib das Arbeitsblatt als gut gegliederten Text aus (Überschriften, nummerierte Aufgaben, Antwortlinien als „________“). Setze die Gestaltungsvorgaben um, soweit es im Text möglich ist, und nenne die übrigen am Ende als kurze Layout-Hinweise zum Übertragen in ein Textprogramm.'
   };
   fields.abFormat = {
@@ -609,6 +666,11 @@ var PB_DATA = (function () {
     type: 'stepper', label: 'Anzahl der Aufgaben auf dem Arbeitsblatt', unit: 'Aufgaben', def: 5, min: 1, max: 20, step: 1, quick: [3, 5, 8],
     hint: 'Das Arbeitsblatt bekommt automatisch die Gestaltungsvorgaben des Designsheets (Farben, Schriften, Kästen, Seitenaufbau, Lösungsübersicht) und darf mehrere Blätter haben.',
     showIf: arbeitsblatt.aktiv
+  };
+  fields.abZweige = {
+    type: 'seg', label: 'Arbeitsblatt für mehrere Zweige', def: 'Ein gemeinsames Blatt', options: ['Ein gemeinsames Blatt', 'Je Zweig ein eigenes Blatt'],
+    hint: 'Gemeinsames Blatt: Jede Aufgabe zeigt, für welchen Zweig sie Pflicht oder Wahl ist.',
+    showIf: function (s) { return arbeitsblatt.aktiv(s) && (s.zweige || []).length > 1; }
   };
 
   var data = {

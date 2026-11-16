@@ -7,10 +7,11 @@ var passed = 0;
 function test(name, fn) { fn(); passed++; console.log('ok  ' + name); }
 function example(modeId) {
   var m = PB.getMode(D, modeId), s = PB.defaultState(D);
-  s.mode = modeId; Object.assign(s, m.defaults || {}, JSON.parse(JSON.stringify(m.example)));
+  s.mode = modeId; Object.assign(s, JSON.parse(JSON.stringify(m.example)));
   return s;
 }
-var SECTIONS = ['## Rolle', '## Kontext', '## Aufgabe', '## Ausgabeformat', '## Qualitätsregeln', '## Für ein noch besseres Ergebnis'];
+var SECTIONS = ['## Rolle', '## Kontext', '## Aufgabe', '## Ausgabeformat', '## Qualitätsregeln', '## Selbstkritik', '## Für ein noch besseres Ergebnis'];
+var KRITIK = 'Du bist ein harter Kritiker. Deine Aufgabe ist es, deine Antwort zu kritisieren. Erkläre mir, warum sie schlecht ist. Lies es in Ruhe durch und durchdenke deine Antwort Schritt für Schritt, bevor du etwas erstellst. Nutze anschließend diese Kritik und liefere ein optimiertes Ergebnis.';
 
 D.modes.forEach(function (m) {
   test('Beispiel ' + m.id + ' ergibt vollständigen Prompt', function () {
@@ -19,7 +20,9 @@ D.modes.forEach(function (m) {
     assert.ok(p.indexOf(m.example.thema) !== -1, 'Thema fehlt');
     assert.ok(/fehlen.*\n.*„wichtig“ und „optional“/.test(p), 'Optimierungsauftrag fehlt');
     assert.ok(p.indexOf('Biete an, das Ergebnis zu überarbeiten') !== -1);
-    assert.ok(p.indexOf('Erfinde keine Quellen oder Fakten.') !== -1);
+    assert.ok(p.indexOf('Erfinde keine Quellen, Zitate, Zahlen oder Fakten.') !== -1);
+    assert.ok(p.indexOf(KRITIK) !== -1, m.id + ': Kritiker-Zusatz fehlt');
+    assert.ok(p.indexOf('Kerncurriculum bzw. Lehrplan des Landes Niedersachsen') !== -1, m.id + ': KC immer');
     assert.ok(p.indexOf('[unsicher]') !== -1 && p.indexOf('Das solltest du prüfen') !== -1);
     assert.ok(p.indexOf('[Thema ergänzen]') === -1);
     assert.ok(p.indexOf('undefined') === -1 && p.indexOf('NaN') === -1 && !/\{[a-zA-Z]+\}/.test(p), 'Platzhalter-Reste');
@@ -59,15 +62,35 @@ test('Zweig und Differenzierung', function () {
   var s = example('material'); var p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('Schulform / Zweig: Realschule, Hauptschule') !== -1);
   assert.ok(p.indexOf('### Differenzierung') !== -1 && p.indexOf('drei Niveaustufen') !== -1 && p.indexOf('sprachsensibel') !== -1);
-  assert.ok(p.indexOf('Differenziere auf diese Zweige: Realschule, Hauptschule.') !== -1);
-  s.diff = 'Nein'; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('sichtbar: Realschule, Hauptschule.') !== -1);
+  s.diffArt = []; s.diffZweige = []; p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('### Differenzierung') === -1 && p.indexOf('Niveaustufen') === -1);
 });
 
-test('Ausgabeformat, Länge, Sprache', function () {
-  var s = example('stunde'); s.stundenMaterial = []; s.format = 'Checkliste'; s.laenge = 'kurz'; s.sprache = 'Englisch';
+test('Länge und Sprache; Länge nur, wo sie nicht schon feststeht', function () {
+  var s = example('stunde'); s.stundenMaterial = []; s.laenge = 'kurz'; s.sprache = 'Englisch';
   var p = PB.buildPrompt(s, D);
-  assert.ok(p.indexOf('- Format: Checkliste') !== -1 && p.indexOf('Länge: kurz – höchstens etwa 1 DIN-A4-Seite') !== -1 && p.indexOf('Sprache des Ergebnisses: Englisch') !== -1);
+  assert.ok(p.indexOf('Länge: kurz – höchstens etwa 1 DIN-A4-Seite') !== -1 && p.indexOf('Sprache des Ergebnisses: Englisch') !== -1);
+  assert.ok(p.indexOf('- Format:') === -1, 'kein freies Format mehr');
+  ['einstieg', 'slides', 'klassenarbeit', 'ewh'].forEach(function (id) { assert.ok(PB.buildPrompt(example(id), D).indexOf('Länge:') === -1, id); });
+});
+
+test('Recherche mit Aktualität der Quellen', function () {
+  var s = example('reihe'); var p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('### Recherche') === -1 && p.indexOf('Recherchiere') === -1, 'aus: keine Recherche');
+  s.recherche = true; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('### Recherche') !== -1 && p.indexOf('Quellenverzeichnis') !== -1 && p.indexOf('Verwende nur Quellen') === -1);
+  s.rechercheZeitraum = 'letzte 30 Tage'; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('Verwende nur Quellen, die in den letzten 30 Tagen (gerechnet ab heute)') !== -1);
+  s.rechercheZeitraum = 'letzte 12 Monate'; assert.ok(PB.buildPrompt(s, D).indexOf('in den letzten 12 Monaten') !== -1);
+  s.rechercheZeitraum = 'letzte 5 Jahre'; assert.ok(PB.buildPrompt(s, D).indexOf('in den letzten 5 Jahren') !== -1);
+  var e = example('ewh'); e.recherche = true; assert.ok(PB.buildPrompt(e, D).indexOf('Recherchiere') === -1, 'nicht im Erwartungshorizont');
+});
+
+test('Materialtyp bestimmt Auftrag', function () {
+  var s = example('material'); s.materialTyp = 'Quiz'; var p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('Erstelle ein Quiz (Mathematik)') !== -1 && p.indexOf('Lösungsschlüssel') !== -1);
+  s.materialTyp = 'Sachtext'; assert.ok(PB.buildPrompt(s, D).indexOf('Erstelle einen Sachtext') !== -1);
 });
 
 test('Klassenarbeit: je Zweig eine Fassung', function () {
@@ -85,6 +108,9 @@ test('Erwartungshorizont: Bezug und Zweig-Erwartungen', function () {
   assert.ok(p.indexOf('oben in diesem Chat erstellten Klassenarbeit') !== -1);
   assert.ok(p.indexOf('Aufgabe | erwartete Leistung | Punkte | Anforderungsbereich') !== -1);
   assert.ok(p.indexOf('getrennt je Zweig') !== -1 && p.indexOf('Anteil von 10 %') !== -1);
+  assert.ok(p.indexOf('Schlage einen üblichen Notenschlüssel vor (Prozent und Punkte je Note bei 50 Punkten)') !== -1, 'leer = Standard');
+  var e = example('ewh'); e.notenschluessel = '1 ab 90 %'; e.sprachAnteil = 0; var pe = PB.buildPrompt(e, D);
+  assert.ok(pe.indexOf('Verwende diesen Notenschlüssel') !== -1 && pe.indexOf('üblichen Notenschlüssel') === -1 && pe.indexOf('sprachliche Richtigkeit') === -1);
   s.bezug = 'Aufgaben füge ich unten im Chat ein';
   assert.ok(PB.buildPrompt(s, D).indexOf('unten im Chat einfüge') !== -1);
 });
@@ -99,15 +125,13 @@ test('Abgehakte Upload-Punkte erscheinen im Prompt und nicht mehr als Beispiel',
   assert.ok(p.indexOf('Bewertungsraster') === -1);
 });
 
-test('Rückfragen immer zuerst, kompakt/ausführlich', function () {
-  var s = example('reihe');
+test('Rückfragen immer zuerst, kein Umfang-Schalter', function () {
   D.modes.forEach(function (m) {
     var q = PB.buildPrompt(example(m.id), D).split('## Qualitätsregeln')[1];
     assert.ok(q.indexOf('- Kläre Unklarheiten immer zuerst') === 1, m.id + ': Rückfragen als erste Regel');
   });
   assert.ok(!('rueckfragen' in PB.defaultState(D)), 'kein Schalter mehr');
-  var lang = PB.buildPrompt(s, D); s.promptStil = 'kompakt'; var kurz = PB.buildPrompt(s, D);
-  assert.ok(kurz.length < lang.length && kurz.indexOf('Für ein noch besseres Ergebnis') !== -1);
+  ['promptStil', 'format', 'kc', 'diff', 'sprachRichtigkeit', 'notenEigen', 'operatoren'].forEach(function (k) { assert.ok(!(k in PB.defaultState(D)), k + ' gestrichen'); });
 });
 
 test('Reihenfolge Planen: Einstieg, Stunde, Reihe', function () {
@@ -147,14 +171,14 @@ test('Arbeitsblatt-Vorlage: automatisch, Lücken gefüllt', function () {
   var p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('## Gestaltung des Arbeitsblatts') > p.indexOf('## Ausgabeformat'));
   assert.ok(p.indexOf('Aufgabenblatt für Mathematik, Klasse 7 der Sekundarstufe I (Klassen 5–10), zum Thema „Prozentrechnung am Marktstand des Zauberdorfs Kerbelstein“, mit dem Lernziel einem klar formulierten') !== -1);
-  assert.ok(p.indexOf('und 5 Aufgaben.') !== -1 && p.indexOf('darf mehrere Blätter umfassen') !== -1);
+  assert.ok(p.indexOf('und 5 Aufgaben (insgesamt, über alle Niveaustufen und Zweige hinweg).') !== -1 && p.indexOf('darf mehrere Blätter umfassen') !== -1);
   assert.ok(p.indexOf('Mappenfarbe') === -1 && p.indexOf('#466BB0') === -1 && p.indexOf('Keine Fach- oder Jahrgangsfarben') !== -1, 'keine Fachfarbe');
   assert.ok(p.indexOf('Zahlen nie in Handschrift: Aufgabenziffern in Verdana Bold') !== -1 && p.indexOf('Aufgabenziffern 32 pt') === -1, 'sachliche Ziffern');
   // Designsheet der Schule
   assert.ok(p.indexOf('Petrol #06344A') !== -1 && p.indexOf('Patrick Hand') !== -1 && p.indexOf('Verdana für Fließtext') !== -1 && p.indexOf('Atkinson') === -1);
   assert.ok(p.indexOf('die Null wird als normale 0 geschrieben') !== -1);
   var fmt = p.split('## Ausgabeformat')[1].split('## Gestaltung des Arbeitsblatts')[0];
-  assert.ok(fmt.indexOf('Format:') === -1 && fmt.indexOf('Länge:') === -1, 'kein zweites Ausgabeformat beim Arbeitsblatt');
+  assert.ok(fmt.indexOf('Länge:') === -1, 'beim Arbeitsblatt bestimmt die Aufgabenzahl den Umfang');
   assert.ok(p.indexOf('Vorrang:') === -1, 'ohne Visualisierungswünsche kein Vorrang-Satz');
   var v = example('material'); v.visualWunsch = 'Bunte Hintergrundflächen je Aufgabe';
   var pv = PB.buildPrompt(v, D);
@@ -168,9 +192,9 @@ test('Arbeitsblatt-Vorlage: automatisch, Lücken gefüllt', function () {
   p = PB.buildPrompt(s, D);
   assert.ok(p.indexOf('Klasse 11 der Sekundarstufe II') !== -1 && p.indexOf('mit dem Lernziel „Die Lernenden berechnen Rabatte.“ und 8 Aufgaben') !== -1);
   assert.ok(p.indexOf('Lass keinen Baustein über einen Seitenumbruch laufen') !== -1);
-  assert.ok(p.indexOf('Ausgabe: Gib das Arbeitsblatt als eine vollständige, druckfertige HTML-Datei aus') !== -1, 'Standard: HTML');
+  assert.ok(p.indexOf('Ausgabe: Gib das Arbeitsblatt als eine einzige, eigenständige, druckfertige HTML-Datei aus') !== -1, 'Standard: HTML');
   s.abFormat = 'Word-Datei (DOCX)'; p = PB.buildPrompt(s, D);
-  assert.ok(p.indexOf('als Word-Datei (DOCX)') !== -1 && p.indexOf('druckfertige HTML-Datei aus:') === -1);
+  assert.ok(p.indexOf('als Word-Datei (DOCX)') !== -1 && p.indexOf('eigenständige, druckfertige HTML-Datei aus') === -1);
   s.abFormat = 'Nur Text'; assert.ok(PB.buildPrompt(s, D).indexOf('als gut gegliederten Text aus') !== -1);
   assert.ok(PB.buildPrompt(s, D).trim().split('## Gestaltung des Arbeitsblatts')[1].indexOf('## Qualitätsregeln') !== -1, 'Abschnitt vor den Qualitätsregeln');
   s.materialTyp = 'Quiz'; assert.ok(PB.buildPrompt(s, D).indexOf('Gestaltung des Arbeitsblatts') === -1);
@@ -178,6 +202,50 @@ test('Arbeitsblatt-Vorlage: automatisch, Lücken gefüllt', function () {
   assert.ok(PB.buildPrompt(st, D).indexOf('## Gestaltung des Arbeitsblatts') !== -1 && PB.buildPrompt(st, D).indexOf('#BD3D42') === -1);
   st.stundenMaterial = ['Tafelbild']; assert.ok(PB.buildPrompt(st, D).indexOf('Gestaltung des Arbeitsblatts') === -1);
   assert.ok(PB.buildPrompt(example('klassenarbeit'), D).indexOf('Gestaltung des Arbeitsblatts') === -1);
+});
+
+test('Arbeitsblatt: Platzbudget, Kopf, Schrift, Niveau, Zweige, Wortspeicher', function () {
+  var s = example('material'), p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('Platzbudget:') !== -1 && p.indexOf('verschiebe die letzte Aufgabe') !== -1);
+  assert.ok(p.indexOf('höchstens drei, wenn ein Merkkasten darauf steht') !== -1 && p.indexOf('kein Baustein ist Pflicht') !== -1);
+  assert.ok(p.indexOf('rechts oben Name und daneben Datum') !== -1 && p.indexOf('(Jahrgang, Fach, Name, Datum)') !== -1);
+  assert.ok(p.indexOf('niemals Comic Sans') !== -1 && p.indexOf('"Comic Sans MS"') === -1 && p.indexOf('„Comic Sans MS“') === -1, 'sachliche Ersatzschrift');
+  assert.ok(p.indexOf('arbeitsblatt.css') === -1 && p.indexOf('keine externen Dateien') !== -1 && p.indexOf('overflow: hidden') !== -1);
+  assert.ok(p.indexOf('● (grundlegend)') !== -1 && p.indexOf('Wortspeicher (bei sprachsensibler Gestaltung)') !== -1);
+  assert.ok(p.indexOf('höchstens etwa acht pro Aufgabe') !== -1 && p.indexOf('restlichen Platz mit Schreiblinien') === -1);
+  assert.ok(p.indexOf('gemeinsamen Blatt') !== -1 && p.indexOf('Pflicht oder Wahl') !== -1);
+  s.abZweige = 'Je Zweig ein eigenes Blatt'; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('und 5 Aufgaben (je Zweig)') !== -1 && p.indexOf('für jeden Zweig (Realschule, Hauptschule) ein eigenes') !== -1);
+  s.diffArt = []; s.zweige = ['Realschule']; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('5 Aufgaben (insgesamt)') !== -1 && p.indexOf('●') === -1 && p.indexOf('Zweige:') === -1);
+});
+
+test('Icons: ohne Auswahl nur Word-Symbole, mit Auswahl eigene erlaubt', function () {
+  var s = example('material'), p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('Zeichne keine eigenen Icons und keine dekorativen Illustrationen') !== -1 && p.indexOf('Flat-Stil') === -1);
+  s.visualisierung = ['Icons / Piktogramme']; p = PB.buildPrompt(s, D);
+  assert.ok(p.indexOf('Zeichne keine eigenen Icons') === -1 && p.indexOf('Flat-Stil') !== -1 && p.indexOf('höchstens zwei Illustrationen') !== -1);
+  var st = example('stunde'); st.visualisierung = ['Icons / Piktogramme']; // im Modus Stunde gibt es den Knopf nicht
+  assert.ok(PB.buildPrompt(st, D).indexOf('Zeichne keine eigenen Icons und keine') !== -1);
+  ['slides', 'klassenarbeit'].forEach(function (id) {
+    var e = example(id); e.visualisierung = []; var q = PB.buildPrompt(e, D);
+    assert.ok(q.indexOf('Verwende nur Symbole, die Word bzw. PowerPoint selbst erzeugen können') !== -1, id);
+    e.visualisierung = ['Icons / Piktogramme']; assert.ok(PB.buildPrompt(e, D).indexOf('Verwende nur Symbole') === -1, id);
+  });
+  assert.ok(PB.buildPrompt(example('reihe'), D).indexOf('Zeichne keine eigenen Icons') === -1, 'nur wo visualisiert wird');
+});
+
+test('Selbstkritik knapp', function () {
+  var p = PB.buildPrompt(example('einstieg'), D);
+  assert.ok(p.indexOf('höchstens fünf Punkten') !== -1 && p.indexOf('Gib den Entwurf selbst nicht aus.') !== -1);
+});
+
+test('Oberstufe ergibt sich aus dem Jahrgang', function () {
+  assert.ok(D.fields.zweige.options.join().indexOf('Oberstufe') === -1, 'kein Zweig-Button');
+  var s = example('reihe'); s.jahrgang = '12';
+  assert.ok(PB.buildPrompt(s, D).indexOf('Jahrgang: 12 (Oberstufe)') !== -1);
+  s.jahrgang = '10'; assert.ok(PB.buildPrompt(s, D).indexOf('Jahrgang: 10 (Oberstufe)') === -1 && PB.buildPrompt(s, D).indexOf('Jahrgang: 10') !== -1);
+  assert.deepStrictEqual(PB.sanitizeState({ zweige: ['Gymnasium', 'Oberstufe (Q-Phase)'] }, D).zweige, ['Gymnasium']);
 });
 
 test('Anderes Fach', function () {
